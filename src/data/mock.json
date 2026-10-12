@@ -1,0 +1,224 @@
+{
+  "trips": [
+    {
+      "id": "t1",
+      "title": "Goa Getaway",
+      "startDate": "2026-11-05",
+      "endDate": "2026-11-08",
+      "travellers": 3,
+      "currency": "INR",
+      "totalBudget": 30000,
+      "createdAt": "2026-10-01T09:00:00.000Z",
+      "updatedAt": "2026-10-03T14:30:00.000Z"
+    },
+    {
+      "id": "t2",
+      "title": "Manali Escape",
+      "startDate": "2026-12-20",
+      "endDate": "2026-12-24",
+      "travellers": 2,
+      "currency": "INR",
+      "totalBudget": 8000,
+      "createdAt": "2026-10-05T11:00:00.000Z",
+      "updatedAt": "2026-10-06T16:40:00.000Z"
+    },
+    {
+      "id": "t3",
+      "title": "Jaipur Weekend",
+      "startDate": "2026-12-27",
+      "endDate": "2026-12-28",
+      "travellers": 1,
+      "currency": "INR",
+      "totalBudget": 8000,
+      "createdAt": "2026-10-07T12:00:00.000Z",
+      "updatedAt": "2026-10-07T12:00:00.000Z"
+    }
+  ],
+  "destinations": [
+    {
+      "id": "d1",
+      "tripId": "t1",
+      "city": "North Goa",
+      "country": "India",
+      "arrivalDate": "2026-11-05",
+      "departureDate": "2026-11-06",
+      "createdAt": "2026-10-01T09:10:00.000Z",
+      "updatedAt": "2026-10-01T09:10:00.000Z"
+    },
+    {
+      "id": "d2",
+      "tripId": "t1",
+      "city": "South Goa",
+      "country": "India",
+      "arrivalDate": "2026-11-07",
+      "departureDate": "2026-11-08",
+      "createdAt": "2026-10-01T09:10:00.000Z",
+      "updatedAt": "2026-10-01T09:10:00.000Z"
+    },
+    {
+      "id": "d3",
+      "tripId": "t2",
+      "city": "Manali",
+      "country": "India",
+      "arrivalDate": "2026-12-20",
+      "departureDate": "2026-12-22",
+      "createdAt": "2026-10-05T11:10:00.000Z",
+      "updatedAt": "2026-10-05T11:10:00.000Z"
+    },
+    {
+      "id": "d4",
+      "tripId": "t2",
+      "city": "Kasol",
+      "country": "India",
+      "arrivalDate": "2026-12-23",
+      "departureDate": "2026-12-24",
+      "createdAt": "2026-10-05T11:10:00.000Z",
+      "updatedAt": "2026-10-05T11:10:00.000Z"
+    }
+  ],
+  "activities": [
+    {
+      "id": "a1",
+      "destinationId": "d1",
+      "title": "Beach shack lunch",
+      "category": "food",
+      "cost": 900,
+      "date": "2026-11-05",
+      "startTime": "13:30",
+      "endTime": "14:30",
+      "order": 1,
+      "createdAt": "2026-10-01T09:20:00.000Z",
+      "updatedAt": "2026-10-01T09:20:00.000Z"
+    },
+    {
+      "id": "a2",
+      "destinationId": "d1",
+      "title": "Fort Aguada visit",
+      "category": "sightseeing",
+      "cost": 100,
+      "date": "2026-11-05",
+      "startTime": "16:00",
+      "endTime": "17:30",
+      "order": 2,
+      "createdAt": "2026-10-01T09:20:00.000Z",
+      "updatedAt": "2026-10-01T09:20:00.000Z"
+    },
+    {
+      "id": "a3",
+      "destinationId": "d1",
+      "title": "Parasailing at Baga",
+      "category": "adventure",
+      "cost": 1500,
+      "date": "2026-11-06",
+      "startTime": "10:00",
+      "endTime": "11:00",
+      "order": 1,
+      "createdAt": "2026-10-01T09:20:00.000Z",
+      "updatedAt": "2026-10-01T09:20:00.000Z"
+    },
+    {
+      "id": "a4",
+      "destinationId": "d1",
+      "title": "Jet ski ride",
+      "category": "adventure",
+      "cost": 1200,
+      "date": "2026-11-06",
+      "startTime": "11:00",
+      "endTime": "12:00",
+      "order": 2,
+      "createdAt": "2026-10-01T09:20:00.000Z",
+      "updatedAt": "2026-10-01T09:20:00.000Z"
+    },
+    {
+      "id": "a5",
+      "destinationId": "d1",
+      "title": "Night market shopping",
+      "category": "shopping",
+      "cost": 2000,
+      "date": "2026-11-06",
+      "startTime": "19:00",
+      "endTime": "21:30",
+      "order": 3,
+      "createdAt": "2026-10-01T09:20:00.000Z",
+      "updatedAt": "2026-10-01T09:20:00.000Z"
+    },
+    {
+      "id": "a6",
+      "destinationId": "d2",
+      "title": "Palolem beach day",
+      "category": "sightseeing",
+      "cost": 0,
+      "date": "2026-11-07",
+      "startTime": "11:30",
+      "endTime": "16:00",
+      "order": 1,
+      "createdAt": "2026-10-01T09:20:00.000Z",
+      "updatedAt": "2026-10-01T09:20:00.000Z"
+    },
+    {
+      "id": "a7",
+      "destinationId": "d2",
+      "title": "Dolphin spotting boat trip",
+      "category": "sightseeing",
+      "cost": 800,
+      "date": "2026-11-08",
+      "startTime": "08:00",
+      "endTime": "10:00",
+      "order": 1,
+      "createdAt": "2026-10-01T09:20:00.000Z",
+      "updatedAt": "2026-10-01T09:20:00.000Z"
+    },
+    {
+      "id": "a8",
+      "destinationId": "d3",
+      "title": "Paragliding at Solang",
+      "category": "adventure",
+      "cost": 3000,
+      "date": "2026-12-21",
+      "startTime": "09:00",
+      "endTime": "10:30",
+      "order": 1,
+      "createdAt": "2026-10-05T11:20:00.000Z",
+      "updatedAt": "2026-10-05T11:20:00.000Z"
+    },
+    {
+      "id": "a9",
+      "destinationId": "d3",
+      "title": "Cafe lunch",
+      "category": "food",
+      "cost": 700,
+      "date": "2026-12-21",
+      "startTime": "13:00",
+      "endTime": "14:30",
+      "order": 2,
+      "createdAt": "2026-10-05T11:20:00.000Z",
+      "updatedAt": "2026-10-05T11:20:00.000Z"
+    },
+    {
+      "id": "a10",
+      "destinationId": "d3",
+      "title": "River rafting",
+      "category": "adventure",
+      "cost": 1800,
+      "date": "2026-12-22",
+      "startTime": "11:00",
+      "endTime": "13:30",
+      "order": 1,
+      "createdAt": "2026-10-05T11:20:00.000Z",
+      "updatedAt": "2026-10-05T11:20:00.000Z"
+    },
+    {
+      "id": "a11",
+      "destinationId": "d3",
+      "title": "Mall Road shopping",
+      "category": "shopping",
+      "cost": 1500,
+      "date": "2026-12-22",
+      "startTime": "16:00",
+      "endTime": "18:30",
+      "order": 2,
+      "createdAt": "2026-10-05T11:20:00.000Z",
+      "updatedAt": "2026-10-05T11:20:00.000Z"
+    }
+  ]
+}
