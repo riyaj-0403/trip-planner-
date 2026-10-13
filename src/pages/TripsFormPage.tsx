@@ -1,5 +1,7 @@
 import { Fragment, useState, useMemo, useCallback, useEffect, memo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { Loader2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 import {
   DndContext,
   type DragEndEvent,
@@ -18,20 +20,14 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { createTrip } from "../api/index";
+import { createTrip, getTripDetails, saveTripDetails } from "../api/index";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Select } from "../components/ui/select";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const STEPS = ["Trip details", "Destinations", "Itinerary"];
 const OPTIMAL_HOURS_PER_DAY = 8;
-const DRAFT_KEY = "tripFormDraft";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-// A.1 – ActivityDraft at module scope so helpers and sub-components can use it
 interface ActivityDraft {
   id: string;
   name: string;
@@ -46,9 +42,18 @@ interface DestinationRow {
   name: string;
 }
 
+type DraftShape = {
+  form: {
+    title: string; startDate: string; endDate: string;
+    travellers: string; currency: string; totalBudget: string;
+  };
+  destinations: DestinationRow[];
+  activities: Record<string, ActivityDraft[]>;
+  savedAt: string; // timestamp
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// A.4 – safe UUID that works on plain http
 function newId(): string {
   try {
     return crypto.randomUUID();
@@ -57,7 +62,6 @@ function newId(): string {
   }
 }
 
-// splitDays(10, 3) → [4, 3, 3]
 function splitDays(totalDays: number, count: number): number[] {
   if (count <= 0 || totalDays <= 0) return [];
   const base = Math.floor(totalDays / count);
@@ -65,14 +69,12 @@ function splitDays(totalDays: number, count: number): number[] {
   return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
 }
 
-// Check if two HH:MM ranges overlap
 function timesOverlap(s1: string, e1: string, s2: string, e2: string): boolean {
   if (!s1 || !e1 || !s2 || !e2) return false;
   const min = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
   return !(min(e1) <= min(s2) || min(e2) <= min(s1));
 }
 
-// A.6 – never return negative hours
 function calculateDayDuration(list: ActivityDraft[]): number {
   return list.reduce((total, a) => {
     if (!a.startTime || !a.endTime) return total;
@@ -82,10 +84,35 @@ function calculateDayDuration(list: ActivityDraft[]): number {
   }, 0);
 }
 
+// ─── Draft persistence with per-mode keys ─────────────────────────────────────
+
+function getDraftKey(tripId?: string): string {
+  return tripId ? `trip-draft-${tripId}` : "trip-draft-new";
+}
+
+function loadDraft(tripId?: string): DraftShape | null {
+  try {
+    const raw = localStorage.getItem(getDraftKey(tripId));
+    return raw ? (JSON.parse(raw) as DraftShape) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(draft: DraftShape, tripId?: string) {
+  try {
+    localStorage.setItem(getDraftKey(tripId), JSON.stringify(draft));
+  } catch { /* ignore */ }
+}
+
+function clearDraft(tripId?: string) {
+  try {
+    localStorage.removeItem(getDraftKey(tripId));
+  } catch { /* ignore */ }
+}
+
 // ─── DraggableActivityItem ────────────────────────────────────────────────────
 
-// D.1 – drag handle is a separate button; card is NOT fully draggable
-// C.4 – wrapped in memo; onUpdate/onRemove receive stable signatures
 const DraggableActivityItem = memo(function DraggableActivityItem({
   activity,
   date,
@@ -107,7 +134,6 @@ const DraggableActivityItem = memo(function DraggableActivityItem({
     isDragging,
   } = useSortable({ id: `${date}|${activity.id}` });
 
-  // D.2 – CSS.Transform (not CSS.Translate) for smooth slide animation
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -117,11 +143,10 @@ const DraggableActivityItem = memo(function DraggableActivityItem({
   return (
     <div ref={setNodeRef} style={style} className="bg-card border border-border rounded-lg p-2.5 flex flex-col gap-2">
       <div className="flex gap-2">
-        {/* D.1 – drag handle only */}
         <button
           ref={setActivatorNodeRef}
           type="button"
-          className="cursor-grab touch-none bg-none border-none text-sm text-muted-foreground px-1 flex-shrink-0 hover:text-foreground"
+          className="cursor-grab touch-none bg-none border-none text-sm text-muted-foreground px-1 shrink-0 hover:text-foreground"
           aria-label="Drag to reorder"
           {...attributes}
           {...listeners}
@@ -199,9 +224,8 @@ const DraggableActivityItem = memo(function DraggableActivityItem({
   );
 });
 
-// ─── DayCard (droppable container) ───────────────────────────────────────────
+// ─── DayCard ──────────────────────────────────────────────────────────────────
 
-// B – each day card is a useDroppable target so empty days accept drops
 function DayCard({
   date,
   dayNumber,
@@ -224,7 +248,7 @@ function DayCard({
   const { setNodeRef, isOver } = useDroppable({ id: `day:${date}` });
 
   return (
-    <div ref={setNodeRef} className={`bg-muted/50 border border-border rounded-xl px-4 py-4 flex flex-col gap-3 ${isOver ? "outline outline-2 outline-dashed outline-muted-foreground/30" : ""}`}>
+    <div ref={setNodeRef} className={`bg-muted/50 border border-border rounded-xl px-4 py-4 flex flex-col gap-3 ${isOver ? "outline outline-dashed outline-muted-foreground/30" : ""}`}>
       <div className="flex justify-between items-baseline">
         <h3 className="text-base text-foreground font-semibold">Day {dayNumber}</h3>
         <span className="text-xs text-muted-foreground">{date}</span>
@@ -266,81 +290,122 @@ function DayCard({
   );
 }
 
-// ─── Draft persistence helpers ───────────────────────────────────────────────
-
-type DraftShape = {
-  form: {
-    title: string; startDate: string; endDate: string;
-    travellers: string; currency: string; totalBudget: string;
-  };
-  destinations: DestinationRow[];
-  activities: Record<string, ActivityDraft[]>;
-};
-
-function loadDraft(): DraftShape | null {
-  try {
-    const raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? (JSON.parse(raw) as DraftShape) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveDraft(draft: DraftShape) {
-  try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  } catch { /* quota errors – ignore */ }
-}
-
-function clearDraft() {
-  try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-}
-
 // ─── TripsFormPage ────────────────────────────────────────────────────────────
 
 function TripsFormPage() {
   const navigate = useNavigate();
+  const { id: tripId } = useParams<{ id: string }>();
+  const isEditMode = !!tripId;
 
-  // E.3 – lazy-load draft from localStorage on first render
-  const [form, setForm] = useState(() => {
-    const d = loadDraft();
-    return d?.form ?? {
-      title: "", startDate: "", endDate: "",
-      travellers: "1", currency: "INR", totalBudget: "",
-    };
+  // ── Loading & Error States ─────────────────────────────────────────────────
+  const [loadingState, setLoadingState] = useState<"idle" | "loading" | "loaded" | "notfound" | "error">(
+    isEditMode ? "loading" : "loaded"
+  );
+  const [loadError, setLoadError] = useState("");
+
+  // ── Form State ─────────────────────────────────────────────────────────────
+  const [form, setForm] = useState<DraftShape["form"]>({
+    title: "", startDate: "", endDate: "",
+    travellers: "1", currency: "INR", totalBudget: "",
   });
 
-  // E.1 – destinations stored as { id, name }[] for stable keys
-  const [destinations, setDestinations] = useState<DestinationRow[]>(() => {
-    const d = loadDraft();
-    return d?.destinations ?? [{ id: newId(), name: "" }];
-  });
+  const [destinations, setDestinations] = useState<DestinationRow[]>([
+    { id: newId(), name: "" },
+  ]);
 
-  const [activities, setActivities] = useState<Record<string, ActivityDraft[]>>(() => {
-    const d = loadDraft();
-    return d?.activities ?? {};
-  });
+  const [activities, setActivities] = useState<Record<string, ActivityDraft[]>>({});
 
   const [adjustedDayCounts, setAdjustedDayCounts] = useState<number[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  // B – overlap errors keyed by date; auto-clear after 3s
   const [overlapErrors, setOverlapErrors] = useState<Record<string, string>>({});
-  // E.2 – saving state
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
   const [currentStep, setStepState] = useState<1 | 2 | 3>(1);
   const setStep = (s: 1 | 2 | 3) => setStepState(s);
 
-  // A.3 – sensors: pointer + touch + keyboard
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),        // A.2
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // ── Derived: dayCount & days ─────────────────────────────────────────────
-  // A.6 – clamp dayCount to minimum 0; C.3 – memoised
+  // ── Load edit data on mount ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isEditMode) return;
+
+    async function loadEditData() {
+      try {
+        setLoadingState("loading");
+        const data = await getTripDetails(tripId!);
+
+        // Check if there's a draft and if it's newer than server data
+        const draft = loadDraft(tripId);
+        if (draft && new Date(draft.savedAt) > new Date(data.trip.updatedAt)) {
+          // Ask user to restore draft
+          if (confirm("You have unsaved changes from your last edit. Restore them?")) {
+            setForm(draft.form);
+            setDestinations(draft.destinations);
+            setActivities(draft.activities);
+            setLoadingState("loaded");
+            return;
+          }
+        }
+
+        // Load from server
+        const dests: DestinationRow[] = data.destinations.map((d) => ({
+          id: d.id,
+          name: `${d.city}, ${d.country}`,
+        }));
+
+        const actsByDate: Record<string, ActivityDraft[]> = {};
+        data.activities.forEach((a) => {
+          if (!actsByDate[a.date]) actsByDate[a.date] = [];
+          actsByDate[a.date].push({
+            id: a.id,
+            name: a.title,
+            category: a.category,
+            startTime: a.startTime,
+            endTime: a.endTime,
+            cost: String(a.cost),
+          });
+        });
+
+        setForm({
+          title: data.trip.title,
+          startDate: data.trip.startDate,
+          endDate: data.trip.endDate,
+          travellers: String(data.trip.travellers),
+          currency: data.trip.currency,
+          totalBudget: String(data.trip.totalBudget),
+        });
+        setDestinations(dests);
+        setActivities(actsByDate);
+        setLoadingState("loaded");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("not found")) {
+          setLoadingState("notfound");
+        } else {
+          setLoadError(msg);
+          setLoadingState("error");
+        }
+      }
+    }
+
+    loadEditData();
+  }, [isEditMode, tripId]);
+
+  // ── Draft autosave ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (loadingState !== "loaded") return;
+    const t = setTimeout(() => {
+      saveDraft({ form, destinations, activities, savedAt: new Date().toISOString() }, tripId);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [form, destinations, activities, tripId, loadingState]);
+
+  // ── Derived values ────────────────────────────────────────────────────────
   const { dayCount, days } = useMemo(() => {
     const dc =
       form.startDate && form.endDate
@@ -365,7 +430,6 @@ function TripsFormPage() {
     [destinations]
   );
 
-  // A.5 – effectiveDayCounts indexed by destinations.length (all rows)
   const effectiveDayCounts = useMemo(() => {
     if (destinations.length === 0 || dayCount === 0) return [];
     return adjustedDayCounts.length === destinations.length
@@ -373,13 +437,11 @@ function TripsFormPage() {
       : splitDays(dayCount, destinations.length);
   }, [adjustedDayCounts, destinations.length, dayCount]);
 
-  // C.3 – dayDestinationIndex memoised
   const dayDestinationIndex = useMemo(
     () => effectiveDayCounts.flatMap((n, i) => Array.from({ length: n }, () => i)),
     [effectiveDayCounts]
   );
 
-  // C.1 – budget computed as derived values (no state, no functions)
   const { totalSpent, spentByCategory, remainingBudget } = useMemo(() => {
     const flat = Object.values(activities).flat();
     const spent = flat.reduce((s, a) => s + Number(a.cost || 0), 0);
@@ -394,7 +456,6 @@ function TripsFormPage() {
     };
   }, [activities, form.totalBudget]);
 
-  // C.1 – day warnings and live overlap detection as derived values
   const { dayWarnings, overlapDays } = useMemo(() => {
     const warnings: Record<string, number> = {};
     const overlaps: Record<string, boolean> = {};
@@ -412,15 +473,8 @@ function TripsFormPage() {
     return { dayWarnings: warnings, overlapDays: overlaps };
   }, [activities]);
 
-  // E.3 – debounced draft autosave
-  useEffect(() => {
-    const t = setTimeout(() => saveDraft({ form, destinations, activities }), 300);
-    return () => clearTimeout(t);
-  }, [form, destinations, activities]);
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
-  // C.5 – functional setState form
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const { name, value } = e.target;
@@ -460,7 +514,6 @@ function TripsFormPage() {
     }
   }
 
-  // C.5 – stable callbacks with functional setState
   const addActivity = useCallback((date: string) => {
     const blank: ActivityDraft = {
       id: newId(), name: "", category: "", startTime: "", endTime: "", cost: "",
@@ -485,7 +538,6 @@ function TripsFormPage() {
     }));
   }, []);
 
-  // B – rewritten handleDragEnd: immutable, arrayMove for same-day, move for cross-day
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -493,10 +545,8 @@ function TripsFormPage() {
     const activeStr = String(active.id);
     const overStr = String(over.id);
 
-    // Parse source
     const [sourceDate, sourceId] = activeStr.split("|");
 
-    // Target could be an activity id ("date|actId") or a day drop zone ("day:date")
     let targetDate: string;
     let targetId: string | null = null;
 
@@ -510,7 +560,6 @@ function TripsFormPage() {
     const targetList = activities[targetDate] ?? [];
 
     if (sourceDate === targetDate) {
-      // ── Same-day reorder ──────────────────────────────────────────────────
       const fromIdx = sourceList.findIndex((a) => a.id === sourceId);
       const toIdx = targetId ? sourceList.findIndex((a) => a.id === targetId) : sourceList.length - 1;
       if (fromIdx === -1 || toIdx === -1) return;
@@ -518,11 +567,9 @@ function TripsFormPage() {
       const reordered = arrayMove(sourceList, fromIdx, toIdx);
       setActivities((prev) => ({ ...prev, [sourceDate]: reordered }));
     } else {
-      // ── Cross-day move ────────────────────────────────────────────────────
       const moving = sourceList.find((a) => a.id === sourceId);
       if (!moving) return;
 
-      // B – check overlap before moving
       const wouldOverlap = targetList.some((a) =>
         timesOverlap(moving.startTime, moving.endTime, a.startTime, a.endTime)
       );
@@ -530,7 +577,6 @@ function TripsFormPage() {
       if (wouldOverlap) {
         const msg = "Can't move here: the time overlaps another activity.";
         setOverlapErrors((prev) => ({ ...prev, [targetDate]: msg }));
-        // B – auto-clear after 3s
         setTimeout(() => {
           setOverlapErrors((prev) => {
             const next = { ...prev };
@@ -541,7 +587,6 @@ function TripsFormPage() {
         return;
       }
 
-      // Insert at position of target activity (or end if dropped on day zone)
       const insertAt = targetId
         ? targetList.findIndex((a) => a.id === targetId)
         : targetList.length;
@@ -557,7 +602,7 @@ function TripsFormPage() {
     }
   }
 
-  // ── Validation & navigation ────────────────────────────────────────────────
+  // ── Validation ─────────────────────────────────────────────────────────────
 
   function validate(): boolean {
     const next: Record<string, string> = {};
@@ -572,8 +617,12 @@ function TripsFormPage() {
   }
 
   function goBack() {
-    if (currentStep === 1) navigate("/");
-    else setStep((currentStep - 1) as 1 | 2 | 3);
+    if (currentStep === 1) {
+      if (isEditMode) navigate(`/trips/${tripId}`);
+      else navigate("/");
+    } else {
+      setStep((currentStep - 1) as 1 | 2 | 3);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -585,7 +634,6 @@ function TripsFormPage() {
     }
 
     if (currentStep === 2) {
-      // A.5 – every row must be non-blank
       if (destinations.some((d) => !d.name.trim())) {
         setErrors({ destinations: "Fill in every destination, or remove the empty ones." });
         return;
@@ -616,30 +664,98 @@ function TripsFormPage() {
     setSaving(true);
     setSubmitError("");
     try {
-      // NOTE: destinations and activities are not sent yet – backend API not ready
-      await createTrip({
-        title: form.title,
-        startDate: form.startDate,
-        endDate: form.endDate,
-        travellers: Number(form.travellers),
-        currency: form.currency,
-        totalBudget: Number(form.totalBudget),
-      });
-      clearDraft();         // E.3 – remove draft after success
-      navigate("/");
-    } catch {
-      setSubmitError("Couldn't save the trip. Please try again.");
+      if (isEditMode) {
+        await saveTripDetails(tripId!, {
+          title: form.title,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          travellers: Number(form.travellers),
+          currency: form.currency,
+          totalBudget: Number(form.totalBudget),
+        }, destinations, activities);
+        clearDraft(tripId);
+        toast.success("Trip updated!");
+        navigate(`/trips/${tripId}`);
+      } else {
+        await createTrip({
+          title: form.title,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          travellers: Number(form.travellers),
+          currency: form.currency,
+          totalBudget: Number(form.totalBudget),
+        });
+        clearDraft();
+        toast.success("Trip created!");
+        navigate("/");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save trip.";
+      setSubmitError(msg);
     } finally {
       setSaving(false);
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Loading / Error States ─────────────────────────────────────────────────
+
+  if (isEditMode && loadingState === "loading") {
+    return (
+      <main className="min-h-screen bg-background text-foreground py-10 px-6 sm:px-4 flex items-center justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="animate-spin size-5" />
+          <span>Loading trip...</span>
+        </div>
+      </main>
+    );
+  }
+
+  if (isEditMode && loadingState === "notfound") {
+    return (
+      <main className="min-h-screen bg-background text-foreground py-10 px-6 sm:px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="flex gap-3 items-start p-4 rounded-lg border border-destructive/30 bg-destructive/10">
+            <AlertCircle className="size-5 text-destructive mt-0.5 shrink-0" />
+            <div className="flex flex-col gap-2">
+              <h2 className="font-semibold text-destructive">Trip not found</h2>
+              <p className="text-sm text-muted-foreground">This trip doesn't exist or may have been deleted.</p>
+              <Button onClick={() => navigate("/")} className="w-fit">
+                Back to trips
+              </Button>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (isEditMode && loadingState === "error") {
+    return (
+      <main className="min-h-screen bg-background text-foreground py-10 px-6 sm:px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="flex gap-3 items-start p-4 rounded-lg border border-destructive/30 bg-destructive/10">
+            <AlertCircle className="size-5 text-destructive mt-0.5 shrink-0" />
+            <div className="flex flex-col gap-2">
+              <h2 className="font-semibold text-destructive">Error loading trip</h2>
+              <p className="text-sm text-muted-foreground">{loadError}</p>
+              <Button onClick={() => navigate("/")} className="w-fit">
+                Back to trips
+              </Button>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // ── Main Render ────────────────────────────────────────────────────────────
 
   return (
     <main className="min-h-screen bg-background text-foreground py-10 px-6 sm:px-4">
       <div className="max-w-2xl mx-auto">
-        <h1 className="mt-0 mb-6 text-3xl color-foreground font-semibold">Create New Trip</h1>
+        <h1 className="mt-0 mb-6 text-3xl color-foreground font-semibold">
+          {isEditMode ? "Edit trip" : "Create New Trip"}
+        </h1>
 
         <div className="flex gap-2 justify-between mb-5">
           {STEPS.map((label, i) => {
@@ -647,7 +763,7 @@ function TripsFormPage() {
             const status = number === currentStep ? "active" : number < currentStep ? "done" : "";
             return (
               <div className={`flex items-center gap-2 text-muted-foreground text-xs font-semibold flex-1 ${status === "active" ? "text-foreground" : ""}`} key={label}>
-                <span className={`w-6 h-6 rounded-full border border-border bg-card flex items-center justify-center text-xs flex-shrink-0 ${status === "active" ? "bg-primary border-primary text-primary-foreground" : status === "done" ? "border-primary text-primary" : ""}`}>
+                <span className={`w-6 h-6 rounded-full border border-border bg-card flex items-center justify-center text-xs shrink-0 ${status === "active" ? "bg-primary border-primary text-primary-foreground" : status === "done" ? "border-primary text-primary" : ""}`}>
                   {number < currentStep ? "✓" : number}
                 </span>
                 <span className="hidden sm:inline">{label}</span>
@@ -658,7 +774,6 @@ function TripsFormPage() {
 
         <form className="bg-card border border-border rounded-lg shadow-md p-7 flex flex-col gap-5" onSubmit={handleSubmit} noValidate>
 
-          {/* E.4 – step-panel wrapper for fade-in animation */}
           {currentStep === 1 && (
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-1.5">
@@ -717,10 +832,9 @@ function TripsFormPage() {
                 <p className="text-sm text-muted-foreground">Add every stop on this trip, in the order you will visit.</p>
               </div>
 
-              {/* E.1 – key by dest.id, not index */}
               {destinations.map((dest, index) => (
                 <div className="flex items-center gap-2.5" key={dest.id}>
-                  <span className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center flex-shrink-0">{index + 1}</span>
+                  <span className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center shrink-0">{index + 1}</span>
                   <Input
                     type="text"
                     value={dest.name}
@@ -728,7 +842,7 @@ function TripsFormPage() {
                     placeholder="e.g. Solang Valley"
                     className="flex-1"
                   />
-                  <div className="flex items-center gap-2 bg-muted px-2.5 py-1.5 rounded-lg flex-shrink-0">
+                  <div className="flex items-center gap-2 bg-muted px-2.5 py-1.5 rounded-lg shrink-0">
                     <Button
                       type="button"
                       size="sm"
@@ -784,7 +898,6 @@ function TripsFormPage() {
                 <p className="text-sm text-muted-foreground">{dayCount} day{dayCount === 1 ? "" : "s"}. Add what you want to do on each day.</p>
               </div>
 
-              {/* C.2 – use memoised values directly, not function calls */}
               <div className={`px-3.5 py-3 flex flex-col gap-2.5 rounded-lg ${remainingBudget >= 0 ? "bg-green-50/50 dark:bg-green-950/20 border border-green-200 dark:border-green-900" : "bg-red-50/50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"}`}>
                 <div className="flex justify-between text-xs font-semibold text-foreground">
                   <span>Total Spent:</span>
@@ -824,7 +937,6 @@ function TripsFormPage() {
                       <Fragment key={date}>
                         {showHeading && (
                           <div className="flex justify-between items-baseline py-1.5 pb-1.5 border-b-2 border-primary">
-                            {/* E.1 – read name from destinations array */}
                             <h3 className="text-lg text-foreground font-semibold">{destinations[destIndex]?.name || `Destination ${destIndex + 1}`}</h3>
                             <span className="text-xs font-semibold text-primary">
                               {effectiveDayCounts[destIndex]} day{effectiveDayCounts[destIndex] === 1 ? "" : "s"}
@@ -856,12 +968,11 @@ function TripsFormPage() {
           {submitError && <span className="text-sm text-destructive">{submitError}</span>}
 
           <div className="flex justify-end gap-3 mt-1">
-            {/* E.2 – disable while saving */}
             <Button type="button" variant="outline" onClick={goBack} disabled={saving}>
               {currentStep === 1 ? "Cancel" : "← Back"}
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving…" : currentStep === 3 ? "Save Trip" : "Next →"}
+              {saving ? "Saving…" : currentStep === 3 ? (isEditMode ? "Save changes" : "Save Trip") : "Next →"}
             </Button>
           </div>
         </form>

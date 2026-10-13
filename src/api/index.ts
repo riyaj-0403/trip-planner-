@@ -1,6 +1,6 @@
 
 import data from "../data/mock.json";
-import type { Trip, Destination, Activity } from "../types";
+import type { Trip, Destination, Activity, Category } from "../types";
 
 
 // In-memory "database" (resets on page refresh)                       
@@ -148,4 +148,105 @@ export async function updateActivity(
 export async function deleteActivity(id: string): Promise<void> {
   await delay();
   activities = activities.filter((a) => a.id !== id);
+}
+
+
+// ─── EDIT MODE: Save trip with diff-based updates ──────────────────────────────
+
+import { computeChanges, type DestinationDraft, type ActivityDraft } from "../lib/diffTrip";
+
+export async function saveTripDetails(
+  tripId: string,
+  tripInput: {
+    title: string;
+    startDate: string;
+    endDate: string;
+    travellers: number;
+    currency: string;
+    totalBudget: number;
+  },
+  destinations: DestinationDraft[],
+  activities: Record<string, ActivityDraft[]>
+): Promise<void> {
+  await delay();
+
+  // Load original trip state
+  const original = await getTripDetails(tripId);
+
+  // Compute changes
+  const changes = computeChanges(original, destinations, activities);
+
+  // ─── Step 1: Update trip fields ──────────────────────────────────────────
+  await updateTrip(tripId, tripInput);
+
+  // ─── Step 2: Create destinations, then update ────────────────────────────
+  for (const dest of changes.destinations.toCreate) {
+    const created = await createDestination({
+      tripId,
+      city: dest.city,
+      country: dest.country,
+      arrivalDate: "",
+      departureDate: "",
+    });
+    // Map temp ID to real ID for activity creation
+    const tempIdx = destinations.findIndex(
+      (d) => d.name === `${dest.city}, ${dest.country}` && !isServerId(d.id)
+    );
+    if (tempIdx >= 0 && created.id) {
+      changes.destinations.idMapping.set(destinations[tempIdx].id, created.id);
+    }
+  }
+
+  // Update existing destinations
+  for (const dest of changes.destinations.toUpdate) {
+    await updateDestination(dest.id, {
+      city: dest.city,
+      country: dest.country,
+    });
+  }
+
+  // ─── Step 3: Create activities using real destination IDs ───────────────
+  for (const act of changes.activities.toCreate) {
+    // If the destination ID is a temp ID, resolve it
+    let destId = act.destinationId;
+    if (!isServerId(destId) && changes.destinations.idMapping.has(destId)) {
+      destId = changes.destinations.idMapping.get(destId)!;
+    }
+    await createActivity({
+      destinationId: destId,
+      title: act.title,
+      category: act.category as Category,
+      cost: act.cost,
+      date: act.date,
+      startTime: act.startTime,
+      endTime: act.endTime,
+      order: act.order,
+    });
+  }
+
+  // Update existing activities
+  for (const act of changes.activities.toUpdate) {
+    const patch: Partial<Input<Activity>> = {};
+    if (act.title !== undefined) patch.title = act.title;
+    if (act.category !== undefined) patch.category = act.category as Category;
+    if (act.startTime !== undefined) patch.startTime = act.startTime;
+    if (act.endTime !== undefined) patch.endTime = act.endTime;
+    if (act.cost !== undefined) patch.cost = act.cost;
+    await updateActivity(act.id, patch);
+  }
+
+  // ─── Step 4: Delete activities ──────────────────────────────────────────
+  for (const actId of changes.activities.toDelete) {
+    await deleteActivity(actId);
+  }
+
+  // ─── Step 5: Delete destinations ────────────────────────────────────────
+  for (const destId of changes.destinations.toDelete) {
+    await deleteDestination(destId);
+  }
+}
+
+/** Check if an ID is a server-issued UUID (vs. form-generated temporary ID) */
+function isServerId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }

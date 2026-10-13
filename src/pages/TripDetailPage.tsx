@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getTripDetails } from "../api/index";
+import { Button } from "../components/ui/button";
 import CategoryDonutChart from "../components/CategoryDonutChart";
 import { getCategoryColor, getCategoryLabel } from "../constants/categories";
 import type { Trip, Destination, Activity } from "../types";
-// import "./TripDetailPage.css";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -43,9 +43,9 @@ function StatCard({
   label, value, isNegative,
 }: { label: string; value: string; isNegative?: boolean }) {
   return (
-    <div className="stat-card">
-      <span className="stat-label">{label}</span>
-      <span className={`stat-value${isNegative ? " stat-value--negative" : ""}`}>{value}</span>
+    <div className="bg-card border border-border rounded-lg px-4 py-3.5 flex justify-between items-center shadow-sm">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className={`text-base font-bold ${isNegative ? "text-destructive" : "text-foreground"}`}>{value}</span>
     </div>
   );
 }
@@ -53,22 +53,22 @@ function StatCard({
 function ActivityRow({ activity, currency }: { activity: Activity; currency: string }) {
   const color = getCategoryColor(activity.category);
   return (
-    <div className="activity-row">
-      <span className="activity-time">
+    <div className="grid grid-cols-4 items-center gap-2.5 px-2.5 py-2 bg-muted rounded-lg text-xs">
+      <span className="text-xs text-muted-foreground whitespace-nowrap">
         {activity.startTime && activity.endTime
           ? `${formatTime(activity.startTime)} – ${formatTime(activity.endTime)}`
           : activity.startTime
           ? formatTime(activity.startTime)
           : "—"}
       </span>
-      <span className="activity-name">{activity.title}</span>
+      <span className="font-medium text-foreground min-w-0 truncate">{activity.title}</span>
       <span
-        className="activity-badge"
-        style={{ background: color + "22", color }}
+        className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0"
+        style={{background: color + "22", color}}
       >
         {getCategoryLabel(activity.category)}
       </span>
-      <span className="activity-cost">
+      <span className="text-xs font-semibold text-foreground whitespace-nowrap text-right">
         {activity.cost > 0 ? `${currency} ${activity.cost.toLocaleString()}` : "—"}
       </span>
     </div>
@@ -78,8 +78,8 @@ function ActivityRow({ activity, currency }: { activity: Activity; currency: str
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function TripDetailPage() {
-  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [destinations, setDestinations] = useState<Destination[]>([]);
@@ -176,8 +176,7 @@ export default function TripDetailPage() {
   // ── TODO handlers ─────────────────────────────────────────────────────────
 
   function handleEdit() {
-    // TODO: navigate to edit form when implemented
-    console.log("Edit trip", id);
+    navigate(`/trips/${id}/edit`);
   }
 
   function handleDelete() {
@@ -190,39 +189,28 @@ export default function TripDetailPage() {
 
   if (status === "loading") {
     return (
-      <div className="tdp-page">
-        <div className="tdp-loading" role="status" aria-live="polite">
-          Loading trip…
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-96 gap-3 text-center text-muted-foreground text-base" role="status" aria-live="polite">
+        Loading trip…
       </div>
     );
   }
 
   if (status === "notfound") {
     return (
-      <div className="tdp-page">
-        <div className="tdp-message">
-          <h2>Trip not found</h2>
-          <p>This trip doesn't exist or may have been deleted.</p>
-          <Link to="/" className="tdp-back-link">← Back to trips</Link>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-96 gap-3 text-center">
+        <h2 className="m-0 text-2xl text-foreground font-semibold">Trip not found</h2>
+        <p className="m-0 text-sm text-muted-foreground">This trip doesn't exist or may have been deleted.</p>
+        <Link to="/" className="inline-block text-xs font-semibold text-primary hover:underline">← Back to trips</Link>
       </div>
     );
   }
 
   if (status === "error" || !trip) {
     return (
-      <div className="tdp-page">
-        <div className="tdp-message">
-          <h2>Something went wrong</h2>
-          <p>We couldn't load this trip. Please try again.</p>
-          <button
-            className="tdp-retry-button"
-            onClick={() => { setStatus("loading"); }}
-          >
-            Retry
-          </button>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-96 gap-3 text-center">
+        <h2 className="m-0 text-2xl text-foreground font-semibold">Something went wrong</h2>
+        <p className="m-0 text-sm text-muted-foreground">We couldn't load this trip. Please try again.</p>
+        <Button variant="outline" onClick={() => { setStatus("loading"); }}>Retry</Button>
       </div>
     );
   }
@@ -232,35 +220,34 @@ export default function TripDetailPage() {
   // ── Main render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="tdp-page">
+    <div className="space-y-6">
       {/* ── Header ── */}
-      <header className="tdp-header">
-        <Link to="/" className="tdp-back-link">← My Trips</Link>
+      <header className="space-y-3">
+        <Link to="/" className="inline-block text-xs font-semibold text-primary hover:underline">← My Trips</Link>
 
-        <div className="tdp-header-main">
-          <div className="tdp-header-text">
-            <h1 className="tdp-title">{trip.title}</h1>
-            <p className="tdp-meta">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl text-foreground font-semibold m-0 mb-1.5">{trip.title}</h1>
+            <p className="m-0 text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
               <span>{formatDate(trip.startDate)} – {formatDate(trip.endDate)}</span>
-              <span className="tdp-meta-sep">·</span>
+              <span className="text-border">·</span>
               <span>{trip.travellers} traveller{trip.travellers !== 1 ? "s" : ""}</span>
             </p>
           </div>
-
-          <div className="tdp-header-actions">
-            <button className="tdp-edit-button" onClick={handleEdit}>Edit</button>
-            <button className="tdp-delete-button" onClick={handleDelete}>Delete</button>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={handleEdit}>Edit</Button>
+            <Button variant="destructive" size="sm" onClick={handleDelete}>Delete</Button>
           </div>
         </div>
       </header>
 
       {/* ── Two-column body ── */}
-      <div className="tdp-body">
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
 
         {/* LEFT: sticky sidebar */}
-        <aside className="tdp-sidebar">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-20">
           {/* Budget stat cards */}
-          <div className="tdp-stat-cards">
+          <div className="flex flex-col gap-2.5">
             <StatCard
               label="Total Budget"
               value={`${currency} ${trip.totalBudget.toLocaleString()}`}
@@ -277,8 +264,8 @@ export default function TripDetailPage() {
           </div>
 
           {/* Donut chart + legend */}
-          <div className="tdp-chart-card">
-            <h3 className="tdp-chart-title">Spending by Category</h3>
+          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <h3 className="m-0 mb-4 text-sm font-bold text-foreground uppercase tracking-wider">Spending by Category</h3>
             <CategoryDonutChart
               data={spentByCategory}
               currency={currency}
@@ -288,43 +275,39 @@ export default function TripDetailPage() {
         </aside>
 
         {/* RIGHT: itinerary */}
-        <main className="tdp-itinerary">
-          <h2 className="tdp-itinerary-heading">Itinerary</h2>
+        <main className="flex flex-col gap-6">
+          <h2 className="m-0 text-xl text-foreground font-semibold">Itinerary</h2>
 
           {itinerary.length === 0 ? (
-            <p className="tdp-empty">No itinerary data yet.</p>
+            <p className="text-muted-foreground text-sm m-0">No itinerary data yet.</p>
           ) : (
             itinerary.map(({ dest, days }, gi) => (
-              <section key={dest?.id ?? `block-${gi}`} className="tdp-dest-section">
-                {/* Destination heading */}
-                <div className="tdp-dest-heading">
-                  <h3 className="tdp-dest-name">
+              <section key={dest?.id ?? `block-${gi}`} className="flex flex-col gap-3">
+                <div className="flex justify-between items-baseline pb-1.5 border-b-2 border-primary">
+                  <h3 className="m-0 text-lg text-foreground font-semibold">
                     {dest ? `${dest.city}, ${dest.country}` : "Trip Days"}
                   </h3>
-                  <span className="tdp-dest-days">
+                  <span className="text-xs font-semibold text-primary">
                     {days.length} day{days.length !== 1 ? "s" : ""}
                   </span>
                 </div>
-
-                {/* Day cards */}
                 {days.map(({ date, dayNumber, activities: dayActs, subtotal }) => (
-                  <div key={date} className="tdp-day-card">
-                    <div className="tdp-day-header">
-                      <div className="tdp-day-label">
-                        <span className="tdp-day-number">Day {dayNumber}</span>
-                        <span className="tdp-day-date">{formatDate(date)}</span>
+                  <div key={date} className="bg-card border border-border rounded-2xl px-4 py-4 flex flex-col gap-3 shadow-sm">
+                    <div className="flex justify-between items-baseline">
+                      <div className="flex items-baseline gap-2.5">
+                        <span className="text-base font-bold text-foreground">Day {dayNumber}</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(date)}</span>
                       </div>
                       {subtotal > 0 && (
-                        <span className="tdp-day-subtotal">
+                        <span className="text-xs font-semibold text-foreground">
                           {currency} {subtotal.toLocaleString()}
                         </span>
                       )}
                     </div>
-
                     {dayActs.length === 0 ? (
-                      <p className="tdp-no-activities">No activities planned.</p>
+                      <p className="m-0 text-xs text-muted-foreground">No activities planned.</p>
                     ) : (
-                      <div className="tdp-activity-list">
+                      <div className="flex flex-col gap-2">
                         {dayActs.map((a) => (
                           <ActivityRow key={a.id} activity={a} currency={currency} />
                         ))}

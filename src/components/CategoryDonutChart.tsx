@@ -4,7 +4,6 @@ import {
   Pie,
   Cell,
   Tooltip,
-  type TooltipProps,
 } from "recharts";
 import { getCategoryColor, getCategoryLabel } from "../constants/categories";
 
@@ -16,7 +15,7 @@ interface Props {
 
 // ── Custom tooltip ────────────────────────────────────────────────────────────
 
-function DonutTooltip({ active, payload, currency, total }: TooltipProps<number, string> & { currency: string; total: number }) {
+function DonutTooltip({ active, payload, currency, total }: any) {
   if (!active || !payload?.length) return null;
   const { name, value } = payload[0];
   if (!name || value == null) return null;
@@ -119,7 +118,7 @@ export default function CategoryDonutChart({ data, currency, totalBudget }: Prop
             return (
               <li key={s.name} className="grid gap-2 items-center text-xs grid-cols-4 sm:grid-cols-3">
                 <span
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ background: getCategoryColor(s.name) }}
                   aria-hidden="true"
                 />
