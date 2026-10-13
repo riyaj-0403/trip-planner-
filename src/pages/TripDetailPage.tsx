@@ -83,7 +83,6 @@ export default function TripDetailPage() {
   // Fetch on mount / id change with cancelled-flag guard
   useEffect(() => {
     let cancelled = false;
-    setStatus("loading");
 
     async function load() {
       try {

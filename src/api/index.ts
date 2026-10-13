@@ -258,6 +258,28 @@ export async function deleteActivity(id: string): Promise<void> {
   persist();
 }
 
+// ─── Trip list summaries ──────────────────────────────────────────────────────
+// One call gives the list page everything its cards need. (Asking for each trip's
+// destinations and activities separately would be one request per trip.)
+
+export interface TripSummary {
+  tripId: string;
+  destinationCount: number;
+  spent: number; // total cost of all activities in the trip
+}
+
+export async function getTripSummaries(): Promise<TripSummary[]> {
+  await delay();
+  return db.trips.map((trip) => {
+    const tripDests = db.destinations.filter((d) => d.tripId === trip.id);
+    const destIds = new Set(tripDests.map((d) => d.id));
+    const spent = db.activities
+      .filter((a) => destIds.has(a.destinationId))
+      .reduce((sum, a) => sum + a.cost, 0);
+    return { tripId: trip.id, destinationCount: tripDests.length, spent };
+  });
+}
+
 // ─── Whole-trip save (create form + edit form) ────────────────────────────────
 // With a real backend this becomes one call (for example PUT /trips/:id with the
 // destinations and activities nested), so the save is atomic. Here it is applied
