@@ -74,6 +74,139 @@ function newId(): string {
   }
 }
 
+// ─── Spatial Arrow Navigation ─────────────────────────────────────────────────
+
+function isTextLikeInput(el: Element): boolean {
+  if (!(el instanceof HTMLInputElement)) return false;
+  const type = el.type.toLowerCase();
+  return type === "text" || type === "email" || type === "password" || type === "url" || type === "search";
+}
+
+function shouldConsumeArrow(el: Element, direction: string): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+
+  // Text inputs: only consume arrow at caret boundaries (left at start, right at end)
+  if (isTextLikeInput(el)) {
+    const input = el as HTMLInputElement;
+    if (direction === "ArrowLeft") return input.selectionStart === 0;
+    if (direction === "ArrowRight") return input.selectionStart === input.value.length;
+    return false;
+  }
+
+  // Date/time inputs: never consume (native spinners handle them)
+  const tag = el.tagName.toLowerCase();
+  const type = el.getAttribute("type")?.toLowerCase() ?? "";
+  if (tag === "input" && (type === "date" || type === "time" || type === "datetime-local")) {
+    return false;
+  }
+
+  // Number inputs: don't consume Up/Down (native spinners)
+  if (tag === "input" && type === "number") {
+    if (direction === "ArrowUp" || direction === "ArrowDown") return false;
+  }
+
+  // Default: consume
+  return true;
+}
+
+function findSpatialTarget(
+  current: HTMLElement,
+  direction: string,
+  stepContainer: HTMLElement | null
+): HTMLElement | null {
+  const focusables = (stepContainer ?? document).querySelectorAll(
+    "input:not([type='button']):not([type='submit']):not([type='reset']), select, textarea, button"
+  );
+  if (focusables.length === 0) return null;
+
+  const currentRect = current.getBoundingClientRect();
+  const currentCenterX = currentRect.left + currentRect.width / 2;
+  const currentCenterY = currentRect.top + currentRect.height / 2;
+
+  const tolerance = 100; // pixels: candidates within this distance perpendicular to direction
+  const candidates: { el: HTMLElement; distance: number }[] = [];
+
+  for (const el of focusables) {
+    if (el === current || !(el instanceof HTMLElement)) continue;
+    const rect = el.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    let isCandidate = false;
+    let distance = Infinity;
+
+    if (direction === "ArrowLeft") {
+      if (centerX < currentCenterX) {
+        const perpDist = Math.abs(centerY - currentCenterY);
+        if (perpDist <= tolerance) {
+          isCandidate = true;
+          distance = currentCenterX - centerX;
+        }
+      }
+    } else if (direction === "ArrowRight") {
+      if (centerX > currentCenterX) {
+        const perpDist = Math.abs(centerY - currentCenterY);
+        if (perpDist <= tolerance) {
+          isCandidate = true;
+          distance = centerX - currentCenterX;
+        }
+      }
+    } else if (direction === "ArrowUp") {
+      if (centerY < currentCenterY) {
+        const perpDist = Math.abs(centerX - currentCenterX);
+        if (perpDist <= tolerance) {
+          isCandidate = true;
+          distance = currentCenterY - centerY;
+        }
+      }
+    } else if (direction === "ArrowDown") {
+      if (centerY > currentCenterY) {
+        const perpDist = Math.abs(centerX - currentCenterX);
+        if (perpDist <= tolerance) {
+          isCandidate = true;
+          distance = centerY - currentCenterY;
+        }
+      }
+    }
+
+    if (isCandidate) {
+      candidates.push({ el: el as HTMLElement, distance });
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => a.distance - b.distance);
+  return candidates[0].el;
+}
+
+function handleSpatialArrowKey(
+  e: React.KeyboardEvent<HTMLFormElement>,
+  currentStep: number,
+  formRef: React.RefObject<HTMLFormElement | null>
+): void {
+  const direction = e.key;
+  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(direction)) return;
+
+  const active = document.activeElement as HTMLElement;
+  if (!active) return;
+
+  // Only if inside form and focused on a form element
+  if (!formRef.current?.contains(active)) return;
+
+  // Check if this element should consume the arrow (e.g., caret at boundary)
+  if (!shouldConsumeArrow(active, direction)) return;
+
+  e.preventDefault();
+
+  // Find the step container to scope the search
+  const stepContainer = formRef.current?.querySelector(`div[data-step="${currentStep}"]`) as HTMLElement | null;
+
+  const target = findSpatialTarget(active, direction, stepContainer);
+  if (target) {
+    target.focus();
+  }
+}
+
 function timesOverlap(s1: string, e1: string, s2: string, e2: string): boolean {
   if (!s1 || !e1 || !s2 || !e2) return false;
   const min = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
@@ -310,6 +443,7 @@ function TripsFormPageInner() {
   const navigate = useNavigate();
   const { id: tripId } = useParams<{ id: string }>();
   const isEditMode = !!tripId;
+  const formRef = useRef<HTMLFormElement>(null);
 
   // ── Loading & Error States ─────────────────────────────────────────────────
   const [loadingState, setLoadingState] = useState<"idle" | "loading" | "loaded" | "notfound" | "error">(
@@ -803,59 +937,54 @@ function TripsFormPageInner() {
 
   if (isEditMode && loadingState === "loading") {
     return (
-      <main className="min-h-screen bg-background text-foreground py-10 px-6 sm:px-4 flex items-center justify-center">
+      <div className="flex items-center justify-center py-20">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="animate-spin size-5" />
           <span>Loading trip...</span>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (isEditMode && loadingState === "notfound") {
     return (
-      <main className="min-h-screen bg-background text-foreground py-10 px-6 sm:px-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex gap-3 items-start p-4 rounded-lg border border-destructive/30 bg-destructive/10">
-            <AlertCircle className="size-5 text-destructive mt-0.5 shrink-0" />
-            <div className="flex flex-col gap-2">
-              <h2 className="font-semibold text-destructive">Trip not found</h2>
-              <p className="text-sm text-muted-foreground">This trip doesn't exist or may have been deleted.</p>
-              <Button onClick={() => navigate("/")} className="w-fit">
-                Back to trips
-              </Button>
-            </div>
+      <div className="max-w-2xl mx-auto py-10">
+        <div className="flex gap-3 items-start p-4 rounded-lg border border-destructive/30 bg-destructive/10">
+          <AlertCircle className="size-5 text-destructive mt-0.5 shrink-0" />
+          <div className="flex flex-col gap-2">
+            <h2 className="font-semibold text-destructive">Trip not found</h2>
+            <p className="text-sm text-muted-foreground">This trip doesn't exist or may have been deleted.</p>
+            <Button onClick={() => navigate("/")} className="w-fit">
+              Back to trips
+            </Button>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (isEditMode && loadingState === "error") {
     return (
-      <main className="min-h-screen bg-background text-foreground py-10 px-6 sm:px-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex gap-3 items-start p-4 rounded-lg border border-destructive/30 bg-destructive/10">
-            <AlertCircle className="size-5 text-destructive mt-0.5 shrink-0" />
-            <div className="flex flex-col gap-2">
-              <h2 className="font-semibold text-destructive">Error loading trip</h2>
-              <p className="text-sm text-muted-foreground">{loadError}</p>
-              <Button onClick={() => navigate("/")} className="w-fit">
-                Back to trips
-              </Button>
-            </div>
+      <div className="max-w-2xl mx-auto py-10">
+        <div className="flex gap-3 items-start p-4 rounded-lg border border-destructive/30 bg-destructive/10">
+          <AlertCircle className="size-5 text-destructive mt-0.5 shrink-0" />
+          <div className="flex flex-col gap-2">
+            <h2 className="font-semibold text-destructive">Error loading trip</h2>
+            <p className="text-sm text-muted-foreground">{loadError}</p>
+            <Button onClick={() => navigate("/")} className="w-fit">
+              Back to trips
+            </Button>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   // ── Main Render ────────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-background text-foreground py-10 px-6 sm:px-4">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="mt-0 mb-6 text-3xl color-foreground font-semibold">
+    <div className="max-w-2xl mx-auto py-4">
+      <h1 className="mt-0 mb-6 text-3xl color-foreground font-semibold">
           {isEditMode ? "Edit trip" : "Create New Trip"}
         </h1>
 
@@ -884,10 +1013,16 @@ function TripsFormPageInner() {
           })}
         </div>
 
-        <form className="bg-card border border-border rounded-lg shadow-md p-7 flex flex-col gap-5" onSubmit={handleSubmit} noValidate>
+        <form 
+          ref={formRef}
+          className="bg-card border border-border rounded-lg shadow-md p-7 flex flex-col gap-5" 
+          onSubmit={handleSubmit}
+          onKeyDown={(e) => handleSpatialArrowKey(e, currentStep, formRef)}
+          noValidate
+        >
 
           {currentStep === 1 && (
-            <div className="flex flex-col gap-5">
+            <div data-step="1" className="flex flex-col gap-5">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="title">Trip title</Label>
                 <Input
@@ -940,7 +1075,7 @@ function TripsFormPageInner() {
           )}
 
           {currentStep === 2 && (
-            <div className="flex flex-col gap-5">
+            <div data-step="2" className="flex flex-col gap-5">
               <div className="mb-2">
                 <h2 className="text-xl text-foreground font-semibold mb-0">Where are you going?</h2>
                 <p className="text-sm text-muted-foreground">Add every stop on this trip, in the order you will visit.</p>
@@ -1006,7 +1141,7 @@ function TripsFormPageInner() {
           )}
 
           {currentStep === 3 && (
-            <div className="flex flex-col gap-5">
+            <div data-step="3" className="flex flex-col gap-5">
               <div className="mb-2">
                 <h2 className="text-xl text-foreground font-semibold mb-0">Plan your days</h2>
                 <p className="text-sm text-muted-foreground">{dayCount} day{dayCount === 1 ? "" : "s"}. Add what you want to do on each day.</p>
@@ -1090,8 +1225,7 @@ function TripsFormPageInner() {
             </Button>
           </div>
         </form>
-      </div>
-    </main>
+    </div>
   );
 }
 

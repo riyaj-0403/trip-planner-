@@ -22,35 +22,35 @@ function TripCard({
       : 0;
 
   return (
-    <div className="bg-card border border-border rounded-2xl px-5 py-5 flex flex-col gap-5 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
-      <div className="trip-card-header">
-        <h2 className="text-2xl text-foreground font-semibold m-0">{trip.title}</h2>
+    <div className="bg-card border border-border rounded-2xl p-4 sm:p-6 flex flex-col gap-4 sm:gap-5 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl sm:text-2xl text-foreground font-semibold m-0 break-words">{trip.title}</h2>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div className="flex flex-col gap-1.5 text-sm text-foreground">
-          <span className="text-xs text-muted-foreground">Dates</span>
-          <span>
-            {trip.startDate} - {trip.endDate}
-          </span>
+      {/* Info grid - stack on mobile, grid on sm+ */}
+      <div className="flex flex-col gap-3 sm:grid sm:grid-cols-3 sm:gap-3">
+        <div className="flex flex-col gap-1.5 text-sm text-foreground min-w-0">
+          <span className="text-xs text-muted-foreground font-medium">Dates</span>
+          <span className="break-words">{trip.startDate} - {trip.endDate}</span>
         </div>
 
-        <div className="flex flex-col gap-1.5 text-sm text-foreground">
-          <span className="text-xs text-muted-foreground">Travellers</span>
+        <div className="flex flex-col gap-1.5 text-sm text-foreground min-w-0">
+          <span className="text-xs text-muted-foreground font-medium">Travellers</span>
           <span>{trip.travellers}</span>
         </div>
 
-        <div className="flex flex-col gap-1.5 text-sm text-foreground">
-          <span className="text-xs text-muted-foreground">Destinations</span>
+        <div className="flex flex-col gap-1.5 text-sm text-foreground min-w-0">
+          <span className="text-xs text-muted-foreground font-medium">Destinations</span>
           <span>{destinationCount}</span>
         </div>
       </div>
 
+      {/* Budget section */}
       <div className="flex flex-col gap-2">
-        <div className="flex justify-between items-center text-sm text-foreground">
-          <span className="text-xs text-muted-foreground">Budget</span>
-
-          <span>
+        <div className="flex justify-between items-baseline text-sm text-foreground gap-2">
+          <span className="text-xs text-muted-foreground font-medium flex-shrink-0">Budget</span>
+          <span className="text-xs sm:text-sm font-semibold break-words text-right">
             {trip.currency} {spent.toLocaleString()} /{" "}
             {trip.currency} {trip.totalBudget.toLocaleString()}
           </span>
@@ -64,12 +64,13 @@ function TripCard({
         </div>
 
         <div className="text-xs text-muted-foreground">
-          <span>
+          <span className="break-words">
             Remaining: {trip.currency} {remaining.toLocaleString()}
           </span>
         </div>
       </div>
 
+      {/* Action button - full width on mobile */}
       <Button className="w-full" onClick={() => onView(trip.id)}>
         View Trip →
       </Button>

@@ -116,17 +116,15 @@ export default function CategoryDonutChart({ data, currency, totalBudget }: Prop
           {slices.map((s) => {
             const pct = total > 0 ? ((s.value / total) * 100).toFixed(1) : "0.0";
             return (
-              <li key={s.name} className="grid gap-2 items-center text-xs grid-cols-4 sm:grid-cols-3">
-                <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ background: getCategoryColor(s.name) }}
-                  aria-hidden="true"
-                />
-                <span className="text-foreground font-medium">{getCategoryLabel(s.name)}</span>
-                <span className="text-foreground font-semibold whitespace-nowrap">
-                  {currency} {s.value.toLocaleString()}
+              <li key={s.name} className="text-xs flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                <span className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: getCategoryColor(s.name) }} aria-hidden="true" />
+                  <span className="text-foreground font-medium truncate">{getCategoryLabel(s.name)}</span>
                 </span>
-                <span className="text-muted-foreground text-xs whitespace-nowrap min-w-9 text-right">{pct}%</span>
+                <span className="flex items-center gap-2 pl-4 sm:pl-0 shrink-0">
+                  <span className="text-foreground font-semibold whitespace-nowrap">{currency} {s.value.toLocaleString()}</span>
+                  <span className="text-muted-foreground whitespace-nowrap min-w-9 sm:text-right">{pct}%</span>
+                </span>
               </li>
             );
           })}

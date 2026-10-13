@@ -36,7 +36,7 @@ function StatCard({
   label, value, isNegative,
 }: { label: string; value: string; isNegative?: boolean }) {
   return (
-    <div className="bg-card border border-border rounded-lg px-4 py-3.5 flex justify-between items-center shadow-sm">
+    <div className="bg-card border border-border rounded-lg px-4 py-3.5 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 shadow-sm">
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <span className={`text-base font-bold ${isNegative ? "text-destructive" : "text-foreground"}`}>{value}</span>
     </div>
@@ -46,24 +46,11 @@ function StatCard({
 function ActivityRow({ activity, currency }: { activity: Activity; currency: string }) {
   const color = getCategoryColor(activity.category);
   return (
-    <div className="grid grid-cols-4 items-center gap-2.5 px-2.5 py-2 bg-muted rounded-lg text-xs">
-      <span className="text-xs text-muted-foreground whitespace-nowrap">
-        {activity.startTime && activity.endTime
-          ? `${formatTime(activity.startTime)} – ${formatTime(activity.endTime)}`
-          : activity.startTime
-          ? formatTime(activity.startTime)
-          : "—"}
-      </span>
+    <div className="flex flex-col gap-1 sm:grid sm:grid-cols-4 sm:items-center sm:gap-2.5 px-2.5 py-2 bg-muted rounded-lg text-xs">
+      <span className="text-xs text-muted-foreground whitespace-nowrap">{activity.startTime && activity.endTime ? `${formatTime(activity.startTime)} – ${formatTime(activity.endTime)}` : activity.startTime ? formatTime(activity.startTime) : "—"}</span>
       <span className="font-medium text-foreground min-w-0 truncate">{activity.title}</span>
-      <span
-        className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0"
-        style={{background: color + "22", color}}
-      >
-        {getCategoryLabel(activity.category)}
-      </span>
-      <span className="text-xs font-semibold text-foreground whitespace-nowrap text-right">
-        {activity.cost > 0 ? `${currency} ${activity.cost.toLocaleString()}` : "—"}
-      </span>
+      <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 w-fit" style={{background: color + "22", color}}>{getCategoryLabel(activity.category)}</span>
+      <span className="text-xs font-semibold text-foreground whitespace-nowrap sm:text-right">{activity.cost > 0 ? `${currency} ${activity.cost.toLocaleString()}` : "—"}</span>
     </div>
   );
 }
@@ -215,12 +202,12 @@ export default function TripDetailPage() {
       <header className="space-y-3">
         <Link to="/" className="inline-block text-xs font-semibold text-primary hover:underline">← My Trips</Link>
 
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl text-foreground font-semibold m-0 mb-1.5">{trip.title}</h1>
-            <p className="m-0 text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
+            <h1 className="text-3xl text-foreground font-semibold m-0 mb-1.5 break-words">{trip.title}</h1>
+            <p className="m-0 text-sm text-muted-foreground flex flex-col sm:flex-row sm:items-center gap-2">
               <span>{formatDate(trip.startDate)} – {formatDate(trip.endDate)}</span>
-              <span className="text-border">·</span>
+              <span className="hidden sm:inline text-border">·</span>
               <span>{trip.travellers} traveller{trip.travellers !== 1 ? "s" : ""}</span>
             </p>
           </div>
