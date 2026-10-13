@@ -1,219 +1,179 @@
-import type { Destination, Activity } from "../types";
+import type { Activity, Category, Destination, Trip } from "../types";
 
 /**
- * Compute the set of changes needed to transform the original trip data
- * into the edited form state.
+ * The full shape of a trip as the form hands it to the API.
  *
- * Returns { toCreate, toUpdate, toDelete } for both destinations and activities.
- * Items with server-issued IDs are compared; form-generated IDs are treated as new.
+ * The form already knows every destination's dates and every activity's
+ * destination, date and position, so it sends them explicitly and nothing has to
+ * be re-guessed here.
+ *
+ * New rows carry a temporary id made by the form. The API decides which rows are
+ * new by checking whether the id was in the data it loaded (never by what the id
+ * looks like).
  */
 
-export interface ActivityDraft {
-  id: string;
-  name: string;
-  category: string;
-  startTime: string;
-  endTime: string;
-  cost: string;
+export interface TripFields {
+  title: string;
+  startDate: string;
+  endDate: string;
+  travellers: number;
+  currency: string;
+  totalBudget: number;
 }
 
-export interface DestinationDraft {
+export interface DestinationPayload {
   id: string;
-  name: string;
+  city: string;
+  country: string;
+  arrivalDate: string;
+  departureDate: string;
+}
+
+export interface ActivityPayload {
+  id: string;
+  destinationId: string; // may be a temporary id if the destination is new
+  title: string;
+  category: Category;
+  cost: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  order: number; // 1-based position within the day
+}
+
+export interface TripPayload {
+  trip: TripFields;
+  destinations: DestinationPayload[];
+  activities: ActivityPayload[];
+}
+
+export interface OriginalTrip {
+  trip: Trip;
+  destinations: Destination[];
+  activities: Activity[];
+}
+
+type DestinationFields = Omit<DestinationPayload, "id">;
+type ActivityFields = Omit<ActivityPayload, "id">;
+
+export interface Patch<T> {
+  id: string;
+  patch: Partial<T>;
 }
 
 export interface Changes {
+  /** Only the trip fields that differ. Empty object = nothing changed. */
+  trip: Partial<TripFields>;
   destinations: {
-    toCreate: Array<{ city: string; country: string }>;
-    toUpdate: Array<{ id: string; city: string; country: string }>;
-    toDelete: string[]; // IDs to delete
-    idMapping: Map<string, string>; // Maps temp ID -> real ID after creation
+    toCreate: DestinationPayload[];
+    toUpdate: Array<Patch<DestinationFields>>;
+    toDelete: string[];
   };
   activities: {
-    toCreate: Array<{
-      destinationId: string;
-      title: string;
-      category: string;
-      startTime: string;
-      endTime: string;
-      cost: number;
-      date: string;
-      order: number;
-    }>;
-    toUpdate: Array<{
-      id: string;
-      title?: string;
-      category?: string;
-      startTime?: string;
-      endTime?: string;
-      cost?: number;
-    }>;
-    toDelete: string[]; // IDs to delete
+    toCreate: ActivityPayload[];
+    toUpdate: Array<Patch<ActivityFields>>;
+    /** Activities removed on their own. Ones that vanish with a deleted destination are left out. */
+    toDelete: string[];
   };
 }
 
-/**
- * Marker to distinguish server IDs from form-generated temporary IDs.
- * Server IDs follow UUID format (8-4-4-4-12).
- */
-function isServerId(id: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function diffFields<T extends object>(original: T, next: T): Partial<T> {
+  const patch: Partial<T> = {};
+  for (const key of Object.keys(next) as Array<keyof T>) {
+    if (original[key] !== next[key]) patch[key] = next[key];
+  }
+  return patch;
 }
 
-export function computeChanges(
-  originalTrip: {
-    destinations: Destination[];
-    activities: Activity[];
-  },
-  editedDestinations: DestinationDraft[],
-  editedActivities: Record<string, ActivityDraft[]>
-): Changes {
-  const originalDestIds = new Set(originalTrip.destinations.map((d) => d.id));
-  const originalActivityIds = new Set(originalTrip.activities.map((a) => a.id));
+const hasKeys = (o: object) => Object.keys(o).length > 0;
 
-  // Flatten edited activities and build day->destIndex mapping
-  const allEditedActivities = Object.entries(editedActivities).flatMap(([date, acts]) =>
-    acts.map((a, order) => ({ ...a, date, order }))
-  );
-  const editedActivityIds = new Set(allEditedActivities.map((a) => a.id));
+const pickTrip = (t: Trip): TripFields => ({
+  title: t.title,
+  startDate: t.startDate,
+  endDate: t.endDate,
+  travellers: t.travellers,
+  currency: t.currency,
+  totalBudget: t.totalBudget,
+});
 
-  // ─── Destinations ───────────────────────────────────────────────────────────
+const pickDestination = (d: Destination | DestinationPayload): DestinationFields => ({
+  city: d.city,
+  country: d.country,
+  arrivalDate: d.arrivalDate,
+  departureDate: d.departureDate,
+});
 
-  const destToCreate: Array<{ city: string; country: string }> = [];
-  const destToUpdate: Array<{ id: string; city: string; country: string }> = [];
-  const idMapping = new Map<string, string>();
+const pickActivity = (a: Activity | ActivityPayload): ActivityFields => ({
+  destinationId: a.destinationId,
+  title: a.title,
+  category: a.category,
+  cost: a.cost,
+  date: a.date,
+  startTime: a.startTime,
+  endTime: a.endTime,
+  order: a.order,
+});
 
-  // New destinations (form-generated IDs or not in original)
-  editedDestinations.forEach((d) => {
-    if (!isServerId(d.id)) {
-      // Form-generated ID → will become a new destination
-      const [city, country] = d.name.split(",").map((s) => s.trim());
-      destToCreate.push({ city: city || "", country: country || "" });
-    } else if (originalDestIds.has(d.id)) {
-      // Server ID that exists in original → check for updates
-      const orig = originalTrip.destinations.find((x) => x.id === d.id);
-      if (orig) {
-        const [city, country] = d.name.split(",").map((s) => s.trim());
-        if (city !== orig.city || country !== orig.country) {
-          destToUpdate.push({ id: d.id, city, country });
-        }
-      }
+// ─── The diff ─────────────────────────────────────────────────────────────────
+
+/**
+ * Compare what was loaded with what the form now holds.
+ * A row is "existing" only if its id was in the loaded data.
+ */
+export function computeChanges(original: OriginalTrip, edited: TripPayload): Changes {
+  const originalDestinations = new Map(original.destinations.map((d) => [d.id, d]));
+  const originalActivities = new Map(original.activities.map((a) => [a.id, a]));
+
+  // Destinations
+  const destCreate: DestinationPayload[] = [];
+  const destUpdate: Array<Patch<DestinationFields>> = [];
+  for (const d of edited.destinations) {
+    const before = originalDestinations.get(d.id);
+    if (!before) {
+      destCreate.push(d);
+      continue;
     }
-  });
+    const patch = diffFields(pickDestination(before), pickDestination(d));
+    if (hasKeys(patch)) destUpdate.push({ id: d.id, patch });
+  }
+  const keptDestinations = new Set(edited.destinations.map((d) => d.id));
+  const destDelete = original.destinations.filter((d) => !keptDestinations.has(d.id)).map((d) => d.id);
+  const deletedDestinations = new Set(destDelete);
 
-  // Deleted destinations (in original, not in edited)
-  const destToDelete = originalTrip.destinations
-    .filter((d) => !editedDestinations.some((e) => e.id === d.id))
-    .map((d) => d.id);
-
-  // ─── Activities ──────────────────────────────────────────────────────────────
-
-  const actToCreate: Changes["activities"]["toCreate"] = [];
-  const actToUpdate: Changes["activities"]["toUpdate"] = [];
-
-  // New activities (form-generated IDs)
-  allEditedActivities.forEach((a) => {
-    if (!isServerId(a.id)) {
-      // Find which destination this activity belongs to
-      // by finding its date in the form and mapping to a destination
-      const dayIndex = Object.keys(editedActivities).indexOf(a.date);
-      if (dayIndex >= 0) {
-        const destIndex = calculateDestinationIndex(
-          editedDestinations.length,
-          dayIndex,
-          editedActivities
-        );
-        if (destIndex >= 0 && destIndex < editedDestinations.length) {
-          const destId = editedDestinations[destIndex].id;
-          actToCreate.push({
-            destinationId: destId,
-            title: a.name,
-            category: a.category,
-            startTime: a.startTime,
-            endTime: a.endTime,
-            cost: Number(a.cost) || 0,
-            date: a.date,
-            order: a.order,
-          });
-        }
-      }
-    } else if (originalActivityIds.has(a.id)) {
-      // Server ID in original → check for updates
-      const orig = originalTrip.activities.find((x) => x.id === a.id);
-      if (orig) {
-        const patch: Changes["activities"]["toUpdate"][0] = { id: a.id };
-        let changed = false;
-        if (a.name !== orig.title) {
-          patch.title = a.name;
-          changed = true;
-        }
-        if (a.category !== orig.category) {
-          patch.category = a.category;
-          changed = true;
-        }
-        if (a.startTime !== orig.startTime) {
-          patch.startTime = a.startTime;
-          changed = true;
-        }
-        if (a.endTime !== orig.endTime) {
-          patch.endTime = a.endTime;
-          changed = true;
-        }
-        if (Number(a.cost) !== orig.cost) {
-          patch.cost = Number(a.cost);
-          changed = true;
-        }
-        if (changed) {
-          actToUpdate.push(patch);
-        }
-      }
+  // Activities
+  const actCreate: ActivityPayload[] = [];
+  const actUpdate: Array<Patch<ActivityFields>> = [];
+  for (const a of edited.activities) {
+    const before = originalActivities.get(a.id);
+    if (!before) {
+      actCreate.push(a);
+      continue;
     }
-  });
-
-  // Deleted activities (in original, not in edited)
-  const actToDelete = originalTrip.activities
-    .filter((a) => !editedActivityIds.has(a.id))
+    const patch = diffFields(pickActivity(before), pickActivity(a));
+    if (hasKeys(patch)) actUpdate.push({ id: a.id, patch });
+  }
+  const keptActivities = new Set(edited.activities.map((a) => a.id));
+  const actDelete = original.activities
+    .filter((a) => !keptActivities.has(a.id) && !deletedDestinations.has(a.destinationId))
     .map((a) => a.id);
 
   return {
-    destinations: {
-      toCreate: destToCreate,
-      toUpdate: destToUpdate,
-      toDelete: destToDelete,
-      idMapping,
-    },
-    activities: {
-      toCreate: actToCreate,
-      toUpdate: actToUpdate,
-      toDelete: actToDelete,
-    },
+    trip: diffFields(pickTrip(original.trip), edited.trip),
+    destinations: { toCreate: destCreate, toUpdate: destUpdate, toDelete: destDelete },
+    activities: { toCreate: actCreate, toUpdate: actUpdate, toDelete: actDelete },
   };
 }
 
-/**
- * Calculate which destination index a given day belongs to.
- * This mimics the form's dayDestinationIndex calculation.
- */
-function calculateDestinationIndex(
-  destCount: number,
-  dayIndex: number,
-  activities: Record<string, ActivityDraft[]>
-): number {
-  if (destCount === 0) return -1;
-  const dayCount = Object.keys(activities).length;
-  const splitDays = splitDaysCount(dayCount, destCount);
-  let cumulative = 0;
-  for (let i = 0; i < splitDays.length; i++) {
-    cumulative += splitDays[i];
-    if (dayIndex < cumulative) return i;
-  }
-  return destCount - 1;
-}
-
-/** Split N days across M destinations evenly */
-function splitDaysCount(totalDays: number, destCount: number): number[] {
-  if (destCount <= 0 || totalDays <= 0) return [];
-  const base = Math.floor(totalDays / destCount);
-  const extra = totalDays % destCount;
-  return Array.from({ length: destCount }, (_, i) => base + (i < extra ? 1 : 0));
+export function hasChanges(c: Changes): boolean {
+  return (
+    hasKeys(c.trip) ||
+    c.destinations.toCreate.length > 0 ||
+    c.destinations.toUpdate.length > 0 ||
+    c.destinations.toDelete.length > 0 ||
+    c.activities.toCreate.length > 0 ||
+    c.activities.toUpdate.length > 0 ||
+    c.activities.toDelete.length > 0
+  );
 }

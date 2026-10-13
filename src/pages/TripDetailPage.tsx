@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { getTripDetails } from "../api/index";
+import { toast } from "sonner";
+import { deleteTrip, getTripDetails } from "../api/index";
+import {
+  addDaysIso,
+  compareActivities,
+  dayCountBetween,
+  dayCountsFromDestinations,
+  splitDays,
+} from "../lib/tripDates";
 import { Button } from "../components/ui/button";
 import CategoryDonutChart from "../components/CategoryDonutChart";
 import { getCategoryColor, getCategoryLabel } from "../constants/categories";
@@ -20,21 +28,6 @@ function formatTime(t: string): string {
   const ampm = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
-}
-
-/** Same splitDays logic as the form: distribute days evenly across destinations. */
-function splitDays(total: number, count: number): number[] {
-  if (!count || !total) return [];
-  const base = Math.floor(total / count);
-  const extra = total % count;
-  return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
-}
-
-/** Given a start-date string and an offset, return the ISO date for that day. */
-function addDays(startIso: string, offset: number): string {
-  const d = new Date(startIso + "T00:00:00");
-  d.setDate(d.getDate() + offset);
-  return d.toISOString().slice(0, 10);
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -85,6 +78,7 @@ export default function TripDetailPage() {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "notfound" | "ok">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Fetch on mount / id change with cancelled-flag guard
   useEffect(() => {
@@ -108,7 +102,7 @@ export default function TripDetailPage() {
 
     load();
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, reloadKey]);
 
   // ── Derived budget data ───────────────────────────────────────────────────
 
@@ -128,42 +122,34 @@ export default function TripDetailPage() {
 
   // ── Itinerary structure ──────────────────────────────────────────────────
 
-  /** Build [ { destination, days: [ { date, dayNumber, activities[] } ] } ] */
+  /** Build [ { destination, days: [ { date, dayNumber, activities[] } ] } ].
+   *  Days per destination come from the saved arrival/departure dates (what the user
+   *  chose in the form). If those are missing, fall back to an even split. */
   const itinerary = useMemo(() => {
     if (!trip) return [];
 
-    // Total trip days
-    const totalDays = Math.max(
-      0,
-      Math.round(
-        (new Date(trip.endDate + "T00:00:00").getTime() -
-          new Date(trip.startDate + "T00:00:00").getTime()) /
-          86400000
-      ) + 1
-    );
+    const totalDays = dayCountBetween(trip.startDate, trip.endDate);
 
-    // Assign day counts to each destination (same splitDays logic as the form)
     const dayCounts =
       destinations.length > 0
-        ? splitDays(totalDays, destinations.length)
-        : [totalDays]; // no destinations – treat the whole trip as one block
+        ? dayCountsFromDestinations(destinations, trip.startDate, trip.endDate) ??
+          splitDays(totalDays, destinations.length)
+        : [totalDays]; // no destinations: treat the whole trip as one block
 
-    // Map activities by date for quick lookup
+    // Map activities by date, each day sorted the same way as the edit form.
     const activitiesByDate: Record<string, Activity[]> = {};
     for (const a of activities) {
-      activitiesByDate[a.date] = activitiesByDate[a.date] ?? [];
-      activitiesByDate[a.date].push(a);
+      (activitiesByDate[a.date] ??= []).push(a);
     }
-    // Sort each day's activities by startTime ascending
     for (const list of Object.values(activitiesByDate)) {
-      list.sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+      list.sort(compareActivities);
     }
 
     let dayOffset = 0;
     return dayCounts.map((count, di) => {
       const dest = destinations[di];
       const days = Array.from({ length: count }, (_, k) => {
-        const date = addDays(trip.startDate, dayOffset + k);
+        const date = addDaysIso(trip.startDate, dayOffset + k);
         const list = activitiesByDate[date] ?? [];
         const subtotal = list.reduce((s, a) => s + a.cost, 0);
         return { date, dayNumber: dayOffset + k + 1, activities: list, subtotal };
@@ -179,10 +165,15 @@ export default function TripDetailPage() {
     navigate(`/trips/${id}/edit`);
   }
 
-  function handleDelete() {
-    if (!window.confirm("Delete this trip? This cannot be undone.")) return;
-    // TODO: call deleteTrip(id) and navigate to "/"
-    console.log("Delete trip", id);
+  async function handleDelete() {
+    if (!id || !window.confirm("Delete this trip? This cannot be undone.")) return;
+    try {
+      await deleteTrip(id);
+      toast.success("Trip deleted");
+      navigate("/");
+    } catch {
+      toast.error("Could not delete the trip. Please try again.");
+    }
   }
 
   // ── Render states ─────────────────────────────────────────────────────────
@@ -210,7 +201,7 @@ export default function TripDetailPage() {
       <div className="flex flex-col items-center justify-center min-h-96 gap-3 text-center">
         <h2 className="m-0 text-2xl text-foreground font-semibold">Something went wrong</h2>
         <p className="m-0 text-sm text-muted-foreground">We couldn't load this trip. Please try again.</p>
-        <Button variant="outline" onClick={() => { setStatus("loading"); }}>Retry</Button>
+        <Button variant="outline" onClick={() => setReloadKey((k) => k + 1)}>Retry</Button>
       </div>
     );
   }
@@ -285,7 +276,7 @@ export default function TripDetailPage() {
               <section key={dest?.id ?? `block-${gi}`} className="flex flex-col gap-3">
                 <div className="flex justify-between items-baseline pb-1.5 border-b-2 border-primary">
                   <h3 className="m-0 text-lg text-foreground font-semibold">
-                    {dest ? `${dest.city}, ${dest.country}` : "Trip Days"}
+                    {dest ? (dest.country ? `${dest.city}, ${dest.country}` : dest.city) : "Trip Days"}
                   </h3>
                   <span className="text-xs font-semibold text-primary">
                     {days.length} day{days.length !== 1 ? "s" : ""}

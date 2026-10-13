@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo, useCallback, useEffect, memo } from "react";
+import { Fragment, useState, useMemo, useCallback, useEffect, useRef, memo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -20,7 +20,17 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { createTrip, getTripDetails, saveTripDetails } from "../api/index";
+import { createTripDetails, getTripDetails, saveTripDetails } from "../api/index";
+import type { ActivityPayload, DestinationPayload, TripPayload } from "../lib/diffTrip";
+import {
+  compareActivities,
+  dateRangesFromCounts,
+  dayCountBetween,
+  dayCountsFromDestinations,
+  eachDay,
+  splitDays,
+} from "../lib/tripDates";
+import type { Category } from "../types";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -49,7 +59,9 @@ type DraftShape = {
   };
   destinations: DestinationRow[];
   activities: Record<string, ActivityDraft[]>;
-  savedAt: string; // timestamp
+  adjustedDayCounts: number[];
+  /** trip.updatedAt when the draft started (edit mode). A draft is stale if the trip changed since. */
+  baseUpdatedAt: string | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,13 +72,6 @@ function newId(): string {
   } catch {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
-}
-
-function splitDays(totalDays: number, count: number): number[] {
-  if (count <= 0 || totalDays <= 0) return [];
-  const base = Math.floor(totalDays / count);
-  const extra = totalDays % count;
-  return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
 }
 
 function timesOverlap(s1: string, e1: string, s2: string, e2: string): boolean {
@@ -93,7 +98,16 @@ function getDraftKey(tripId?: string): string {
 function loadDraft(tripId?: string): DraftShape | null {
   try {
     const raw = localStorage.getItem(getDraftKey(tripId));
-    return raw ? (JSON.parse(raw) as DraftShape) : null;
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Partial<DraftShape>;
+    if (!d.form || !Array.isArray(d.destinations) || !d.activities) return null;
+    return {
+      form: d.form,
+      destinations: d.destinations,
+      activities: d.activities,
+      adjustedDayCounts: Array.isArray(d.adjustedDayCounts) ? d.adjustedDayCounts : [],
+      baseUpdatedAt: d.baseUpdatedAt ?? null,
+    };
   } catch {
     return null;
   }
@@ -292,7 +306,7 @@ function DayCard({
 
 // ─── TripsFormPage ────────────────────────────────────────────────────────────
 
-function TripsFormPage() {
+function TripsFormPageInner() {
   const navigate = useNavigate();
   const { id: tripId } = useParams<{ id: string }>();
   const isEditMode = !!tripId;
@@ -316,6 +330,11 @@ function TripsFormPage() {
   const [activities, setActivities] = useState<Record<string, ActivityDraft[]>>({});
 
   const [adjustedDayCounts, setAdjustedDayCounts] = useState<number[]>([]);
+  // An earlier unsaved draft waiting for the user to restore or discard it.
+  const [pendingDraft, setPendingDraft] = useState<DraftShape | null>(null);
+  // The state as first loaded: autosave only writes a draft once the user changed something.
+  const baselineRef = useRef<string | null>(null);
+  const baseUpdatedAtRef = useRef<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [overlapErrors, setOverlapErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -330,46 +349,46 @@ function TripsFormPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // ── Load edit data on mount ────────────────────────────────────────────────
+  // ── Load saved trip (edit) and look for an earlier unsaved draft ────────────
   useEffect(() => {
-    if (!isEditMode) return;
+    let cancelled = false;
 
-    async function loadEditData() {
+    async function init() {
+      if (!isEditMode) {
+        const draft = loadDraft();
+        if (draft) setPendingDraft(draft);
+        return;
+      }
+
       try {
         setLoadingState("loading");
         const data = await getTripDetails(tripId!);
+        if (cancelled) return;
 
-        // Check if there's a draft and if it's newer than server data
-        const draft = loadDraft(tripId);
-        if (draft && new Date(draft.savedAt) > new Date(data.trip.updatedAt)) {
-          // Ask user to restore draft
-          if (confirm("You have unsaved changes from your last edit. Restore them?")) {
-            setForm(draft.form);
-            setDestinations(draft.destinations);
-            setActivities(draft.activities);
-            setLoadingState("loaded");
-            return;
-          }
-        }
-
-        // Load from server
+        // Destinations keep their saved order. Saved arrival/departure dates give
+        // the days per destination; if they are missing or do not line up, the
+        // form falls back to an even split (same as the detail page).
         const dests: DestinationRow[] = data.destinations.map((d) => ({
           id: d.id,
-          name: `${d.city}, ${d.country}`,
+          name: d.country ? `${d.city}, ${d.country}` : d.city,
         }));
+        const savedCounts =
+          dayCountsFromDestinations(data.destinations, data.trip.startDate, data.trip.endDate) ?? [];
 
+        // Same ordering as the detail page: by day, then start time, then saved order.
         const actsByDate: Record<string, ActivityDraft[]> = {};
-        data.activities.forEach((a) => {
-          if (!actsByDate[a.date]) actsByDate[a.date] = [];
-          actsByDate[a.date].push({
-            id: a.id,
-            name: a.title,
-            category: a.category,
-            startTime: a.startTime,
-            endTime: a.endTime,
-            cost: String(a.cost),
+        [...data.activities]
+          .sort((a, b) => a.date.localeCompare(b.date) || compareActivities(a, b))
+          .forEach((a) => {
+            (actsByDate[a.date] ??= []).push({
+              id: a.id,
+              name: a.title,
+              category: a.category,
+              startTime: a.startTime,
+              endTime: a.endTime,
+              cost: String(a.cost),
+            });
           });
-        });
 
         setForm({
           title: data.trip.title,
@@ -379,12 +398,22 @@ function TripsFormPage() {
           currency: data.trip.currency,
           totalBudget: String(data.trip.totalBudget),
         });
-        setDestinations(dests);
+        setDestinations(dests.length > 0 ? dests : [{ id: newId(), name: "" }]);
         setActivities(actsByDate);
+        setAdjustedDayCounts(dests.length > 0 ? savedCounts : []);
+        baseUpdatedAtRef.current = data.trip.updatedAt;
+
+        // A draft only counts if the trip has not changed since it was started.
+        const draft = loadDraft(tripId);
+        if (draft) {
+          if (draft.baseUpdatedAt === data.trip.updatedAt) setPendingDraft(draft);
+          else clearDraft(tripId);
+        }
         setLoadingState("loaded");
       } catch (err) {
+        if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("not found")) {
+        if (msg.toLowerCase().includes("not found")) {
           setLoadingState("notfound");
         } else {
           setLoadError(msg);
@@ -393,37 +422,52 @@ function TripsFormPage() {
       }
     }
 
-    loadEditData();
+    init();
+    return () => {
+      cancelled = true;
+    };
   }, [isEditMode, tripId]);
 
-  // ── Draft autosave ────────────────────────────────────────────────────────
+  function restoreDraft() {
+    if (!pendingDraft) return;
+    setForm(pendingDraft.form);
+    setDestinations(pendingDraft.destinations);
+    setActivities(pendingDraft.activities);
+    setAdjustedDayCounts(pendingDraft.adjustedDayCounts);
+    setPendingDraft(null);
+  }
+
+  function discardDraft() {
+    clearDraft(tripId);
+    setPendingDraft(null);
+  }
+
+  // ── Draft autosave (only once the user has changed something) ──────────────
   useEffect(() => {
-    if (loadingState !== "loaded") return;
+    if (loadingState !== "loaded" || pendingDraft) return;
+    const snapshot = JSON.stringify({ form, destinations, activities, adjustedDayCounts });
+    if (baselineRef.current === null) {
+      baselineRef.current = snapshot; // first settled state = "nothing changed yet"
+      return;
+    }
+    if (snapshot === baselineRef.current) return;
     const t = setTimeout(() => {
-      saveDraft({ form, destinations, activities, savedAt: new Date().toISOString() }, tripId);
+      saveDraft(
+        { form, destinations, activities, adjustedDayCounts, baseUpdatedAt: baseUpdatedAtRef.current },
+        tripId
+      );
     }, 300);
     return () => clearTimeout(t);
-  }, [form, destinations, activities, tripId, loadingState]);
+  }, [form, destinations, activities, adjustedDayCounts, tripId, loadingState, pendingDraft]);
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const { dayCount, days } = useMemo(() => {
-    const dc =
-      form.startDate && form.endDate
-        ? Math.max(
-            0,
-            Math.round(
-              (new Date(form.endDate).getTime() - new Date(form.startDate).getTime()) /
-                86400000
-            ) + 1
-          )
-        : 0;
-    const d = Array.from({ length: dc }, (_, i) => {
-      const dt = new Date(form.startDate);
-      dt.setUTCDate(dt.getUTCDate() + i);
-      return dt.toISOString().slice(0, 10);
-    });
-    return { dayCount: dc, days: d };
-  }, [form.startDate, form.endDate]);
+  const { dayCount, days } = useMemo(
+    () => ({
+      dayCount: dayCountBetween(form.startDate, form.endDate),
+      days: eachDay(form.startDate, form.endDate),
+    }),
+    [form.startDate, form.endDate]
+  );
 
   const namedDestinations = useMemo(
     () => destinations.map((d) => d.name.trim()).filter(Boolean),
@@ -606,6 +650,8 @@ function TripsFormPage() {
 
   function validate(): boolean {
     const next: Record<string, string> = {};
+    if (!form.title.trim()) next.title = "Trip title is required.";
+    if (!(Number(form.travellers) >= 1)) next.travellers = "At least 1 traveller.";
     if (!form.startDate) next.startDate = "Start date is required.";
     if (!form.endDate) next.endDate = "End date is required.";
     if (form.startDate && form.endDate && form.startDate > form.endDate)
@@ -623,6 +669,66 @@ function TripsFormPage() {
     } else {
       setStep((currentStep - 1) as 1 | 2 | 3);
     }
+  }
+
+  /** Everything the API needs, built from what the form already knows. */
+  function buildPayload(): { payload: TripPayload; outOfRange: number } {
+    const ranges = dateRangesFromCounts(form.startDate, effectiveDayCounts);
+
+    const destinationPayload: DestinationPayload[] = destinations.map((d, i) => {
+      const [city, ...rest] = d.name.split(",");
+      return {
+        id: d.id,
+        city: city.trim(),
+        country: rest.join(",").trim(),
+        arrivalDate: ranges[i]?.arrivalDate ?? "",
+        departureDate: ranges[i]?.departureDate ?? "",
+      };
+    });
+
+    const activityPayload: ActivityPayload[] = [];
+    days.forEach((date, i) => {
+      const dest = destinationPayload[dayDestinationIndex[i]];
+      if (!dest) return;
+      (activities[date] ?? [])
+        .filter((a) => a.name.trim())
+        .forEach((a, j) => {
+          activityPayload.push({
+            id: a.id,
+            destinationId: dest.id,
+            title: a.name.trim(),
+            category: (a.category || "other") as Category,
+            cost: Number(a.cost) || 0,
+            date,
+            startTime: a.startTime,
+            endTime: a.endTime,
+            order: j + 1,
+          });
+        });
+    });
+
+    // Activities sitting on days that no longer exist (the dates were shortened).
+    const validDays = new Set(days);
+    let outOfRange = 0;
+    for (const [date, list] of Object.entries(activities)) {
+      if (!validDays.has(date)) outOfRange += list.filter((a) => a.name.trim()).length;
+    }
+
+    return {
+      payload: {
+        trip: {
+          title: form.title.trim(),
+          startDate: form.startDate,
+          endDate: form.endDate,
+          travellers: Number(form.travellers),
+          currency: form.currency,
+          totalBudget: Number(form.totalBudget),
+        },
+        destinations: destinationPayload,
+        activities: activityPayload,
+      },
+      outOfRange,
+    };
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -661,33 +767,29 @@ function TripsFormPage() {
     }
 
     // Step 3 – save
+    const { payload, outOfRange } = buildPayload();
+    if (
+      outOfRange > 0 &&
+      !window.confirm(
+        `${outOfRange} planned ${outOfRange === 1 ? "activity falls" : "activities fall"} outside the new trip dates and will be removed. Continue?`
+      )
+    ) {
+      return;
+    }
+
     setSaving(true);
     setSubmitError("");
     try {
       if (isEditMode) {
-        await saveTripDetails(tripId!, {
-          title: form.title,
-          startDate: form.startDate,
-          endDate: form.endDate,
-          travellers: Number(form.travellers),
-          currency: form.currency,
-          totalBudget: Number(form.totalBudget),
-        }, destinations, activities);
+        await saveTripDetails(tripId!, payload);
         clearDraft(tripId);
         toast.success("Trip updated!");
         navigate(`/trips/${tripId}`);
       } else {
-        await createTrip({
-          title: form.title,
-          startDate: form.startDate,
-          endDate: form.endDate,
-          travellers: Number(form.travellers),
-          currency: form.currency,
-          totalBudget: Number(form.totalBudget),
-        });
+        const created = await createTripDetails(payload);
         clearDraft();
         toast.success("Trip created!");
-        navigate("/");
+        navigate(`/trips/${created.id}`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to save trip.";
@@ -757,6 +859,16 @@ function TripsFormPage() {
           {isEditMode ? "Edit trip" : "Create New Trip"}
         </h1>
 
+        {pendingDraft && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3 text-sm">
+            <span>You have unsaved changes from earlier. Restore them?</span>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" onClick={restoreDraft}>Restore</Button>
+              <Button type="button" size="sm" variant="outline" onClick={discardDraft}>Discard</Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2 justify-between mb-5">
           {STEPS.map((label, i) => {
             const number = i + 1;
@@ -783,6 +895,7 @@ function TripsFormPage() {
                   value={form.title} onChange={handleChange}
                   placeholder="e.g. Manali Adventure"
                 />
+                {errors.title && <span className="text-sm text-destructive">{errors.title}</span>}
               </div>
 
               <div className="flex gap-4 flex-col md:flex-row">
@@ -801,6 +914,7 @@ function TripsFormPage() {
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="travellers">Travellers</Label>
                 <Input id="travellers" name="travellers" type="number" min="1" value={form.travellers} onChange={handleChange} />
+                {errors.travellers && <span className="text-sm text-destructive">{errors.travellers}</span>}
               </div>
 
               <div className="flex gap-4 flex-col md:flex-row">
@@ -981,4 +1095,9 @@ function TripsFormPage() {
   );
 }
 
-export default TripsFormPage;
+// Remount when the route changes (new <-> edit, or edit of a different trip) so no
+// state leaks from one form to the next.
+export default function TripsFormPage() {
+  const { id } = useParams<{ id: string }>();
+  return <TripsFormPageInner key={id ?? "new"} />;
+}
