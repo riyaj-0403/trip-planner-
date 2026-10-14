@@ -146,13 +146,6 @@ export async function getTrips(): Promise<Trip[]> {
   return copy(db.trips);
 }
 
-export async function getTrip(id: string): Promise<Trip> {
-  await delay();
-  const trip = db.trips.find((t) => t.id === id);
-  if (!trip) notFound("Trip");
-  return copy(trip);
-}
-
 /** A trip with its destinations and activities in one call (detail page + edit form).
  *  Activities come back sorted by date, then start time, then order. */
 export async function getTripDetails(id: string): Promise<{
