@@ -37,3 +37,14 @@ export interface Activity {
   createdAt: string;   // ISO format
   updatedAt: string;   // ISO format 
 }
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+  role: "USER" | "ADMIN";
+}
+
+export interface AuthResponse extends AuthUser {
+  token: string;
+  tokenType: string;
+}

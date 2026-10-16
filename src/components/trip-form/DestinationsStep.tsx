@@ -41,7 +41,7 @@ export default function DestinationsStep({
             type="text"
             value={dest.name}
             onChange={(e) => onNameChange(dest.id, e.target.value)}
-            placeholder="e.g. Solang Valley"
+            placeholder="e.g. Solang Valley, India"
             className="flex-1"
           />
           <div className="flex items-center gap-2 bg-muted px-2.5 py-1.5 rounded-lg shrink-0">

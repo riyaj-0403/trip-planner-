@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { NavLink, Link } from "react-router-dom"
-import { Menu, Moon, Sun, Plane } from "lucide-react"
+import { Menu, Moon, Sun, Plane, LogOut } from "lucide-react"
+import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -19,6 +20,7 @@ const links = [
 
 export function Navbar() {
   const { theme, toggleTheme } = useTheme()
+  const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -49,6 +51,14 @@ export function Navbar() {
           >
             {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>
+          {user && (
+            <>
+              <span className="text-sm text-muted-foreground">{user.name}</span>
+              <Button variant="outline" size="sm" onClick={logout}>
+                <LogOut /> Logout
+              </Button>
+            </>
+          )}
         </nav>
 
         <div className="flex items-center gap-1 md:hidden">
@@ -82,6 +92,11 @@ export function Navbar() {
                     {l.label}
                   </NavLink>
                 ))}
+                {user && (
+                  <Button variant="outline" onClick={logout}>
+                    <LogOut /> Logout ({user.name})
+                  </Button>
+                )}
               </nav>
             </SheetContent>
           </Sheet>

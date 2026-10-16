@@ -1,9 +1,11 @@
 import type { DraftShape } from "../types/tripForm";
+import { getUser } from "./authStorage";
 
 // Draft persistence with per-mode keys (one draft for "new", one per edited trip).
 
 function getDraftKey(tripId?: string): string {
-  return tripId ? `trip-draft-${tripId}` : "trip-draft-new";
+  const uid = getUser()?.id ?? "anon";
+  return tripId ? `trip-draft-${uid}-${tripId}` : `trip-draft-${uid}-new`;
 }
 
 export function loadDraft(tripId?: string): DraftShape | null {

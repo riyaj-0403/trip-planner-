@@ -1,5 +1,6 @@
 // Small fetch wrapper used by the real (backend) API layer.
 // Every call goes through request(), so error handling lives in one place.
+import { clearSession, getToken } from "../lib/authStorage";
 
 const BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? "/api").replace(/\/$/, "");
 
@@ -27,13 +28,19 @@ function resourceName(path: string): string {
 
 export async function request<T = void>(
   path: string,
-  options: { method?: string; body?: unknown } = {}
+  options: { method?: string; body?: unknown; auth?: boolean } = {}
 ): Promise<T> {
+  const useAuth = options.auth !== false; // login/register pass auth:false
+  const headers: Record<string, string> = {};
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  const token = useAuth ? getToken() : null;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
       method: options.method ?? "GET",
-      headers: options.body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
   } catch {
@@ -52,6 +59,14 @@ export async function request<T = void>(
   }
 
   if (!res.ok) {
+    // Not logged in / token expired. The backend currently answers 403 for this
+    // (not 401), so treat both the same. A full reload also clears in-memory caches.
+    if (useAuth && (res.status === 401 || res.status === 403)) {
+      clearSession();
+      window.location.assign("/login?expired=1");
+      throw new ApiError(res.status, "Your session has expired. Please log in again.");
+    }
+
     if (res.status === 404) throw new ApiError(404, `${resourceName(path)} not found`);
     const message =
       (data as { message?: string } | undefined)?.message ||
