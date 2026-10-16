@@ -36,9 +36,9 @@ function StatCard({
   label, value, isNegative,
 }: { label: string; value: string; isNegative?: boolean }) {
   return (
-    <div className="bg-card border border-border rounded-lg px-4 py-3.5 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 shadow-sm">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span className={`text-base font-bold ${isNegative ? "text-destructive" : "text-foreground"}`}>{value}</span>
+    <div className="bg-card border border-border rounded-lg px-2.5 py-2.5 sm:px-4 sm:py-3.5 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-2 shadow-sm">
+      <span className="text-[11px] sm:text-xs font-medium text-muted-foreground">{label}</span>
+      <span className={`text-sm sm:text-base font-bold break-words ${isNegative ? "text-destructive" : "text-foreground"}`}>{value}</span>
     </div>
   );
 }
@@ -46,7 +46,7 @@ function StatCard({
 function ActivityRow({ activity, currency }: { activity: Activity; currency: string }) {
   const color = getCategoryColor(activity.category);
   return (
-    <div className="flex flex-col gap-1 sm:grid sm:grid-cols-4 sm:items-center sm:gap-2.5 px-2.5 py-2 bg-muted rounded-lg text-xs">
+    <div className="flex flex-col gap-0.5 sm:gap-1 sm:grid sm:grid-cols-4 sm:items-center sm:gap-2.5 px-2 py-1.5 sm:px-2.5 sm:py-2 bg-muted rounded-lg text-xs">
       <span className="text-xs text-muted-foreground whitespace-nowrap">{activity.startTime && activity.endTime ? `${formatTime(activity.startTime)} – ${formatTime(activity.endTime)}` : activity.startTime ? formatTime(activity.startTime) : "—"}</span>
       <span className="font-medium text-foreground min-w-0 truncate">{activity.title}</span>
       <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 w-fit" style={{background: color + "22", color}}>{getCategoryLabel(activity.category)}</span>
@@ -166,7 +166,7 @@ export default function TripDetailPage() {
 
   if (status === "loading") {
     return (
-      <div className="flex flex-col items-center justify-center min-h-96 gap-3 text-center text-muted-foreground text-base" role="status" aria-live="polite">
+      <div className="flex flex-col items-center justify-center min-h-64 sm:min-h-96 gap-3 text-center text-muted-foreground text-base" role="status" aria-live="polite">
         Loading trip…
       </div>
     );
@@ -174,8 +174,8 @@ export default function TripDetailPage() {
 
   if (status === "notfound") {
     return (
-      <div className="flex flex-col items-center justify-center min-h-96 gap-3 text-center">
-        <h2 className="m-0 text-2xl text-foreground font-semibold">Trip not found</h2>
+      <div className="flex flex-col items-center justify-center min-h-64 sm:min-h-96 gap-3 text-center">
+        <h2 className="m-0 text-xl sm:text-2xl text-foreground font-semibold">Trip not found</h2>
         <p className="m-0 text-sm text-muted-foreground">This trip doesn't exist or may have been deleted.</p>
         <Link to="/" className="inline-block text-xs font-semibold text-primary hover:underline">← Back to trips</Link>
       </div>
@@ -184,8 +184,8 @@ export default function TripDetailPage() {
 
   if (status === "error" || !trip) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-96 gap-3 text-center">
-        <h2 className="m-0 text-2xl text-foreground font-semibold">Something went wrong</h2>
+      <div className="flex flex-col items-center justify-center min-h-64 sm:min-h-96 gap-3 text-center">
+        <h2 className="m-0 text-xl sm:text-2xl text-foreground font-semibold">Something went wrong</h2>
         <p className="m-0 text-sm text-muted-foreground">We couldn't load this trip. Please try again.</p>
         <Button variant="outline" onClick={() => setReloadKey((k) => k + 1)}>Retry</Button>
       </div>
@@ -197,15 +197,15 @@ export default function TripDetailPage() {
   // ── Main render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* ── Header ── */}
-      <header className="space-y-3">
+      <header className="space-y-2 sm:space-y-3">
         <Link to="/" className="inline-block text-xs font-semibold text-primary hover:underline">← My Trips</Link>
 
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
           <div>
-            <h1 className="text-3xl text-foreground font-semibold m-0 mb-1.5 break-words">{trip.title}</h1>
-            <p className="m-0 text-sm text-muted-foreground flex flex-col sm:flex-row sm:items-center gap-2">
+            <h1 className="text-xl sm:text-3xl text-foreground font-semibold m-0 mb-1 sm:mb-1.5 break-words">{trip.title}</h1>
+            <p className="m-0 text-xs sm:text-sm text-muted-foreground flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
               <span>{formatDate(trip.startDate)} – {formatDate(trip.endDate)}</span>
               <span className="hidden sm:inline text-border">·</span>
               <span>{trip.travellers} traveller{trip.travellers !== 1 ? "s" : ""}</span>
@@ -219,12 +219,12 @@ export default function TripDetailPage() {
       </header>
 
       {/* ── Two-column body ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 sm:gap-6 items-start">
 
         {/* LEFT: sticky sidebar */}
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-20">
+        <aside className="flex flex-col gap-3 sm:gap-4 lg:sticky lg:top-20">
           {/* Budget stat cards */}
-          <div className="flex flex-col gap-2.5">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-col sm:gap-2.5">
             <StatCard
               label="Total Budget"
               value={`${currency} ${trip.totalBudget.toLocaleString()}`}
@@ -241,8 +241,8 @@ export default function TripDetailPage() {
           </div>
 
           {/* Donut chart + legend */}
-          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-            <h3 className="m-0 mb-4 text-sm font-bold text-foreground uppercase tracking-wider">Spending by Category</h3>
+          <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-sm">
+            <h3 className="m-0 mb-2 sm:mb-4 text-xs sm:text-sm font-bold text-foreground uppercase tracking-wider">Spending by Category</h3>
             <CategoryDonutChart
               data={spentByCategory}
               currency={currency}
@@ -252,16 +252,16 @@ export default function TripDetailPage() {
         </aside>
 
         {/* RIGHT: itinerary */}
-        <main className="flex flex-col gap-6">
-          <h2 className="m-0 text-xl text-foreground font-semibold">Itinerary</h2>
+        <main className="flex flex-col gap-4 sm:gap-6">
+          <h2 className="m-0 text-lg sm:text-xl text-foreground font-semibold">Itinerary</h2>
 
           {itinerary.length === 0 ? (
             <p className="text-muted-foreground text-sm m-0">No itinerary data yet.</p>
           ) : (
             itinerary.map(({ dest, days }, gi) => (
-              <section key={dest?.id ?? `block-${gi}`} className="flex flex-col gap-3">
+              <section key={dest?.id ?? `block-${gi}`} className="flex flex-col gap-2 sm:gap-3">
                 <div className="flex justify-between items-baseline pb-1.5 border-b-2 border-primary">
-                  <h3 className="m-0 text-lg text-foreground font-semibold">
+                  <h3 className="m-0 text-base sm:text-lg text-foreground font-semibold">
                     {dest ? (dest.country ? `${dest.city}, ${dest.country}` : dest.city) : "Trip Days"}
                   </h3>
                   <span className="text-xs font-semibold text-primary">
@@ -269,10 +269,10 @@ export default function TripDetailPage() {
                   </span>
                 </div>
                 {days.map(({ date, dayNumber, activities: dayActs, subtotal }) => (
-                  <div key={date} className="bg-card border border-border rounded-2xl px-4 py-4 flex flex-col gap-3 shadow-sm">
+                  <div key={date} className="bg-card border border-border rounded-xl sm:rounded-2xl px-3 py-3 sm:px-4 sm:py-4 flex flex-col gap-2 sm:gap-3 shadow-sm">
                     <div className="flex justify-between items-baseline">
                       <div className="flex items-baseline gap-2.5">
-                        <span className="text-base font-bold text-foreground">Day {dayNumber}</span>
+                        <span className="text-sm sm:text-base font-bold text-foreground">Day {dayNumber}</span>
                         <span className="text-xs text-muted-foreground">{formatDate(date)}</span>
                       </div>
                       {subtotal > 0 && (
@@ -284,7 +284,7 @@ export default function TripDetailPage() {
                     {dayActs.length === 0 ? (
                       <p className="m-0 text-xs text-muted-foreground">No activities planned.</p>
                     ) : (
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-1.5 sm:gap-2">
                         {dayActs.map((a) => (
                           <ActivityRow key={a.id} activity={a} currency={currency} />
                         ))}

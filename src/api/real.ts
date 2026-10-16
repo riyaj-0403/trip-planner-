@@ -26,7 +26,7 @@ interface ActivityDto {
   cost: number | string;
   startTime?: string | null;
   endTime?: string | null;
-  order?: number | null; // not sent until backend task B5 is done
+  sortOrder?: number | null; // position inside the destination, set by the backend
   createdAt: string;
   updatedAt: string;
 }
@@ -35,9 +35,11 @@ interface DestinationDto {
   id: number;
   tripId?: number; // not sent yet; backend task B15
   city: string;
-  country?: string | null; // not sent until backend task B3 is done
+  country?: string | null;
   startDate: string;
   endDate: string;
+  days?: number;
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
   activities?: ActivityDto[];
@@ -110,7 +112,7 @@ function toActivity(dto: ActivityDto, destinationId: string): Activity {
     date: dto.date,
     startTime: hhmm(dto.startTime),
     endTime: hhmm(dto.endTime),
-    order: dto.order ?? 0,
+    order: dto.sortOrder ?? 0,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
   } as Activity;
@@ -149,10 +151,6 @@ function flatten(dto: TripDto) {
 
 // ─── Converters: frontend -> backend ──────────────────────────────────────────
 
-/** Real backend ids are digits only. Temporary ids made by the form are UUIDs. */
-const isRealId = (id: string) => /^\d+$/.test(id);
-const numId = (id: string) => Number(id);
-
 interface ActivityFields {
   title: string;
   category: Category;
@@ -163,15 +161,18 @@ interface ActivityFields {
   order: number;
 }
 
-function activityBody(a: ActivityFields) {
+/** Real backend ids are digits only. Temporary ids made by the form are UUIDs, so they are sent as "no id" (= create). */
+const isRealId = (id: string) => /^\d+$/.test(id);
+const numId = (id: string) => Number(id);
+
+/** POST /destinations/:id/activities?date=...  The date goes in the URL; the backend sets the order. */
+function activityCreateBody(a: ActivityFields) {
   return {
     title: a.title,
-    date: a.date,
     category: a.category.toUpperCase(),
     cost: a.cost,
-    startTime: a.startTime || null,
-    endTime: a.endTime || null,
-    order: a.order,
+    startTime: a.startTime,
+    endTime: a.endTime,
   };
 }
 
@@ -184,45 +185,29 @@ function activityPatchBody(patch: Partial<Input<Activity>>) {
   if (patch.cost !== undefined) body.cost = patch.cost;
   if (patch.startTime) body.startTime = patch.startTime;
   if (patch.endTime) body.endTime = patch.endTime;
-  if (patch.order !== undefined) body.order = patch.order;
+  if (patch.order !== undefined) body.sortOrder = patch.order;
   return body;
 }
 
+/** Inclusive number of days between two YYYY-MM-DD dates (1 Nov to 5 Nov = 5). */
+function daysBetween(from: string, to: string): number {
+  const ms = Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);
+  return Math.max(1, Math.round(ms / 86_400_000) + 1);
+}
+
+/** The backend wants a number of days, not dates; it works the dates out itself. */
 function destinationBody(d: { city: string; country: string; arrivalDate: string; departureDate: string }) {
-  return { city: d.city, country: d.country, startDate: d.arrivalDate, endDate: d.departureDate };
+  return { city: d.city, country: d.country, days: daysBetween(d.arrivalDate, d.departureDate) };
 }
 
 function destinationPatchBody(patch: Partial<Input<Destination>>) {
   const body: Record<string, unknown> = {};
   if (patch.city !== undefined) body.city = patch.city;
   if (patch.country !== undefined) body.country = patch.country;
-  if (patch.arrivalDate !== undefined) body.startDate = patch.arrivalDate;
-  if (patch.departureDate !== undefined) body.endDate = patch.departureDate;
+  if (patch.arrivalDate !== undefined && patch.departureDate !== undefined) {
+    body.days = daysBetween(patch.arrivalDate, patch.departureDate);
+  }
   return body;
-}
-
-/**
- * The whole trip as one nested body (used by POST /trips and PUT /trips/:id).
- * Rows that already exist keep their id; new rows (temporary UUIDs) are sent without one.
- * The trip's country is taken from its first destination (the form has no trip-level country).
- */
-function tripTreeBody(payload: TripPayload) {
-  const country = payload.destinations.find((d) => d.country)?.country || undefined;
-
-  return {
-    ...payload.trip,
-    country,
-    destinations: payload.destinations.map((d) => ({
-      ...(isRealId(d.id) ? { id: numId(d.id) } : {}),
-      ...destinationBody(d),
-      activities: payload.activities
-        .filter((a) => a.destinationId === d.id)
-        .map((a) => ({
-          ...(isRealId(a.id) ? { id: numId(a.id) } : {}),
-          ...activityBody(a),
-        })),
-    })),
-  };
 }
 
 // ─── Trip list (cached for a moment so the list page's two calls share one request) ───
@@ -271,10 +256,41 @@ export async function createTrip(input: Input<Trip>): Promise<Trip> {
   return toTrip(dto);
 }
 
+/**
+ * Change some trip fields. The backend's PUT wants the whole trip, so this loads the
+ * current trip, applies the change, and saves everything back through saveTripDetails.
+ */
 export async function updateTrip(id: string, patch: Partial<Input<Trip>>): Promise<Trip> {
-  const dto = await request<TripDto>(`/trips/${id}`, { method: "PATCH", body: patch });
-  invalidateList();
-  return toTrip(dto);
+  const current = await getTripDetails(id);
+  const t = { ...current.trip, ...patch };
+  return saveTripDetails(id, {
+    trip: {
+      title: t.title,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      travellers: t.travellers,
+      currency: t.currency,
+      totalBudget: t.totalBudget,
+    },
+    destinations: current.destinations.map((d) => ({
+      id: d.id,
+      city: d.city,
+      country: d.country,
+      arrivalDate: d.arrivalDate,
+      departureDate: d.departureDate,
+    })),
+    activities: current.activities.map((a) => ({
+      id: a.id,
+      destinationId: a.destinationId,
+      title: a.title,
+      category: a.category,
+      cost: a.cost,
+      date: a.date,
+      startTime: a.startTime,
+      endTime: a.endTime,
+      order: a.order,
+    })),
+  });
 }
 
 export async function deleteTrip(id: string): Promise<void> {
@@ -328,10 +344,10 @@ export async function getActivitiesByTrip(tripId: string): Promise<Activity[]> {
 }
 
 export async function createActivity(input: Input<Activity>): Promise<Activity> {
-  const dto = await request<ActivityDto>(`/destinations/${input.destinationId}/activities`, {
-    method: "POST",
-    body: activityBody(input),
-  });
+  const dto = await request<ActivityDto>(
+    `/destinations/${input.destinationId}/activities?date=${input.date}`,
+    { method: "POST", body: activityCreateBody(input) }
+  );
   invalidateList();
   return toActivity(dto, input.destinationId);
 }
@@ -371,19 +387,73 @@ export async function getTripSummaries(): Promise<TripSummary[]> {
 
 // ─── Whole-trip save (create form + edit form) ────────────────────────────────
 
-/** Create a trip together with its destinations and day-wise activities (one request). */
+/**
+ * Create a trip with its destinations and activities.
+ *   1. POST /trips with the trip fields only (no destinations)
+ *   2. PUT /trips/:id with the full tree (destinations in order, with their activities)
+ * Step 2 is the backend's "make the trip look exactly like this" save, which keeps the
+ * order and the day counts the user chose. (Creating destinations one by one through
+ * POST /trips scrambles their order on the backend.)
+ * If step 2 fails the half-made trip is deleted, so no stray trips are left behind.
+ */
 export async function createTripDetails(payload: TripPayload): Promise<Trip> {
-  const dto = await request<TripDto>("/trips", { method: "POST", body: tripTreeBody(payload) });
+  const country = payload.destinations.find((d) => d.country)?.country || undefined;
+
+  const created = await request<TripDto>("/trips", {
+    method: "POST",
+    body: { ...payload.trip, country, destinations: [] },
+  });
   invalidateList();
-  return toTrip(dto);
+
+  try {
+    return await saveTripDetails(String(created.id), payload);
+  } catch (err) {
+    await request(`/trips/${created.id}`, { method: "DELETE" }).catch(() => undefined);
+    invalidateList();
+    throw err;
+  }
 }
 
 /**
- * Save an edited trip in one atomic request: PUT /trips/:id with the full nested tree.
- * Needs backend task B11. Until then the request will fail with 404/405.
+ * Save an edited trip in one request: PUT /trips/:id with the full final trip.
+ * The backend makes its data match it in one transaction: rows without an id are created,
+ * rows with an id are updated, and anything left out is deleted. Nothing is saved if it fails.
+ *
+ * - Destinations are sent in the order shown; the backend numbers them from that order.
+ * - Activities are sent per destination, sorted by day, start time, then order; the backend
+ *   numbers them from their position in that list.
  */
 export async function saveTripDetails(tripId: string, payload: TripPayload): Promise<Trip> {
-  const dto = await request<TripDto>(`/trips/${tripId}`, { method: "PUT", body: tripTreeBody(payload) });
+  const { trip, destinations, activities } = payload;
+  const country = destinations.find((d) => d.country)?.country || undefined;
+
+  const body = {
+    ...trip,
+    country,
+    destinations: destinations.map((d) => {
+      const { city, country: c, days } = destinationBody(d);
+      return {
+        ...(isRealId(d.id) ? { id: numId(d.id) } : {}),
+        city,
+        country: c,
+        days,
+        activities: activities
+          .filter((a) => a.destinationId === d.id)
+          .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime) || a.order - b.order)
+          .map((a) => ({
+            ...(isRealId(a.id) ? { id: numId(a.id) } : {}),
+            title: a.title,
+            date: a.date,
+            category: a.category.toUpperCase(),
+            cost: a.cost,
+            startTime: a.startTime,
+            endTime: a.endTime,
+          })),
+      };
+    }),
+  };
+
+  const dto = await request<TripDto>(`/trips/${tripId}`, { method: "PUT", body });
   invalidateList();
   return toTrip(dto);
 }
