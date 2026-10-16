@@ -86,19 +86,19 @@ function TripsPage() {
   }
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">My Trips</h1>
-        <p className="mt-1 text-muted-foreground">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">My Trips</h1>
+        <p className="mt-1 text-sm sm:text-base text-muted-foreground">
           Plan and manage all your trips in one place.
         </p>
       </div>
 
       {trips.length > 0 && (
         <div className="space-y-2">
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-end">
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 sm:gap-3 sm:p-4 sm:flex-row sm:items-end">
             <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor="trip-search">Search by name</Label>
+              <Label htmlFor="trip-search" className="sr-only sm:not-sr-only">Search by name</Label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -111,26 +111,30 @@ function TripsPage() {
                 />
               </div>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="trip-from">From</Label>
+            <div className="grid grid-cols-2 gap-2 sm:contents">
+            <div className="flex min-w-0 flex-col gap-1 sm:gap-1.5">
+              <Label htmlFor="trip-from" className="text-xs sm:text-sm">From</Label>
               <Input
                 id="trip-from"
                 type="date"
+                className="min-w-0"
                 value={filters.from}
                 onChange={(e) => updateFilter("from", e.target.value)}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="trip-to">To</Label>
+            <div className="flex min-w-0 flex-col gap-1 sm:gap-1.5">
+              <Label htmlFor="trip-to" className="text-xs sm:text-sm">To</Label>
               <Input
                 id="trip-to"
                 type="date"
+                className="min-w-0"
                 value={filters.to}
                 onChange={(e) => updateFilter("to", e.target.value)}
               />
             </div>
+            </div>
             {filtersActive && (
-              <Button type="button" variant="outline" onClick={() => setFilters(EMPTY_FILTERS)}>
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setFilters(EMPTY_FILTERS)}>
                 <X className="size-4" />
                 Clear
               </Button>

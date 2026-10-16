@@ -53,10 +53,10 @@ export default function CategoryDonutChart({ data, currency, totalBudget }: Prop
         .join(", ")}`;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3 sm:gap-4">
       {/* Chart wrapper with explicit height so ResponsiveContainer renders */}
       <div
-        className="relative h-64 w-full"
+        className="relative h-48 sm:h-64 w-full"
         role="img"
         aria-label={ariaLabel}
       >
@@ -67,7 +67,7 @@ export default function CategoryDonutChart({ data, currency, totalBudget }: Prop
           ) : (
             <>
               <span className="text-xs text-muted-foreground leading-relaxed">Total spent</span>
-              <span className={`text-lg font-bold leading-snug ${isOverBudget ? "text-destructive" : "text-foreground"}`}>
+              <span className={`text-sm sm:text-lg font-bold leading-snug ${isOverBudget ? "text-destructive" : "text-foreground"}`}>
                 {currency} {total.toLocaleString()}
               </span>
               <span className="text-xs text-muted-foreground leading-relaxed">of {currency} {totalBudget.toLocaleString()}</span>
@@ -112,7 +112,7 @@ export default function CategoryDonutChart({ data, currency, totalBudget }: Prop
 
       {/* Custom legend – sorted descending, color + label + amount + pct */}
       {!isEmpty && (
-        <ul className="list-none m-0 p-0 flex flex-col gap-2" aria-label="Chart legend">
+        <ul className="list-none m-0 p-0 flex flex-col gap-1.5 sm:gap-2" aria-label="Chart legend">
           {slices.map((s) => {
             const pct = total > 0 ? ((s.value / total) * 100).toFixed(1) : "0.0";
             return (

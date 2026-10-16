@@ -9,7 +9,7 @@ import {
   eachDay,
   splitDays,
 } from "../lib/tripDates";
-import { buildTripPayload } from "../lib/buildTripPayload";
+import { buildTripPayload, findInvalidTimes } from "../lib/buildTripPayload";
 import { clearDraft, loadDraft } from "../lib/tripDraft";
 import { newId } from "../lib/newId";
 import { useDraftAutosave } from "../hooks/useDraftAutosave";
@@ -298,6 +298,17 @@ function TripsFormPageInner() {
       effectiveDayCounts,
       dayDestinationIndex,
     });
+
+    const invalid = findInvalidTimes(payload.activities);
+    if (invalid.length > 0) {
+      const names = invalid.slice(0, 3).map((a) => `"${a.title}"`).join(", ");
+      const more = invalid.length > 3 ? ` and ${invalid.length - 3} more` : "";
+      const msg = `Set a start time and an end time (end after start) for: ${names}${more}.`;
+      setSubmitError(msg);
+      toast.error(msg);
+    return;
+    }
+    
     if (
       outOfRange > 0 &&
       !window.confirm(

@@ -78,3 +78,8 @@ export function buildTripPayload({
     outOfRange,
   };
 }
+
+/** Named activities whose times the backend would reject: blank, or end not after start. */
+export function findInvalidTimes(activities: ActivityPayload[]): ActivityPayload[] {
+  return activities.filter((a) => !a.startTime || !a.endTime || a.endTime <= a.startTime);
+}
