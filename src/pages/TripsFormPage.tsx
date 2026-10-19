@@ -10,6 +10,7 @@ import {
   splitDays,
 } from "../lib/tripDates";
 import { buildTripPayload, findInvalidTimes } from "../lib/buildTripPayload";
+import { needsTimingReview, TIMING_REVIEW_MESSAGE } from "../lib/tripTimings";
 import { clearDraft, loadDraft } from "../lib/tripDraft";
 import { newId } from "../lib/newId";
 import { useDraftAutosave } from "../hooks/useDraftAutosave";
@@ -306,9 +307,25 @@ function TripsFormPageInner() {
       const msg = `Set a start time and an end time (end after start) for: ${names}${more}.`;
       setSubmitError(msg);
       toast.error(msg);
-    return;
+      return;
     }
-    
+
+    // Block saving while any day still has a timing conflict (order vs start
+    // time, or overlap). Uses the same helper that draws the
+    // "Timing needs review" flag, so the flag and the save check always agree.
+    const flaggedDays = days.filter((day) => {
+      const named = (activities[day] ?? []).filter((a) => a.name.trim());
+      return needsTimingReview(named);
+    });
+    if (flaggedDays.length > 0) {
+      const msg = `${TIMING_REVIEW_MESSAGE} (${flaggedDays.length} ${
+        flaggedDays.length === 1 ? "day" : "days"
+      } affected)`;
+      setSubmitError(msg);
+      toast.error(msg);
+      return;
+    }
+
     if (
       outOfRange > 0 &&
       !window.confirm(
@@ -357,55 +374,55 @@ function TripsFormPageInner() {
 
       <Card className="shadow-md">
         <CardContent className="p-7">
-      <form
-        className="flex flex-col gap-5"
-        onSubmit={handleSubmit}
-        noValidate
-      >
-        {currentStep === 1 && (
-          <TripDetailsStep form={form} errors={errors} onChange={handleChange} />
-        )}
+          <form
+            className="flex flex-col gap-5"
+            onSubmit={handleSubmit}
+            noValidate
+          >
+            {currentStep === 1 && (
+              <TripDetailsStep form={form} errors={errors} onChange={handleChange} />
+            )}
 
-        {currentStep === 2 && (
-          <DestinationsStep
-            destinations={destinations}
-            effectiveDayCounts={effectiveDayCounts}
-            namedDestinations={namedDestinations}
-            dayCount={dayCount}
-            error={errors.destinations}
-            onNameChange={handleDestinationChange}
-            onAdd={addDestination}
-            onRemove={removeDestination}
-            onAddDay={addDayToDestination}
-            onRemoveDay={removeDayFromDestination}
-          />
-        )}
+            {currentStep === 2 && (
+              <DestinationsStep
+                destinations={destinations}
+                effectiveDayCounts={effectiveDayCounts}
+                namedDestinations={namedDestinations}
+                dayCount={dayCount}
+                error={errors.destinations}
+                onNameChange={handleDestinationChange}
+                onAdd={addDestination}
+                onRemove={removeDestination}
+                onAddDay={addDayToDestination}
+                onRemoveDay={removeDayFromDestination}
+              />
+            )}
 
-        {currentStep === 3 && (
-          <ItineraryStep
-            days={days}
-            dayCount={dayCount}
-            destinations={destinations}
-            effectiveDayCounts={effectiveDayCounts}
-            dayDestinationIndex={dayDestinationIndex}
-            activities={activities}
-            setActivities={setActivities}
-            currency={form.currency}
-            totalBudget={form.totalBudget}
-          />
-        )}
+            {currentStep === 3 && (
+              <ItineraryStep
+                days={days}
+                dayCount={dayCount}
+                destinations={destinations}
+                effectiveDayCounts={effectiveDayCounts}
+                dayDestinationIndex={dayDestinationIndex}
+                activities={activities}
+                setActivities={setActivities}
+                currency={form.currency}
+                totalBudget={form.totalBudget}
+              />
+            )}
 
-        {submitError && <span className="text-sm text-destructive">{submitError}</span>}
+            {submitError && <span className="text-sm text-destructive">{submitError}</span>}
 
-        <div className="flex justify-end gap-3 mt-1">
-          <Button type="button" variant="outline" onClick={goBack} disabled={saving}>
-            {currentStep === 1 ? "Cancel" : "← Back"}
-          </Button>
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : currentStep === 3 ? (isEditMode ? "Save changes" : "Save Trip") : "Next →"}
-          </Button>
-        </div>
-      </form>
+            <div className="flex justify-end gap-3 mt-1">
+              <Button type="button" variant="outline" onClick={goBack} disabled={saving}>
+                {currentStep === 1 ? "Cancel" : "← Back"}
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Saving…" : currentStep === 3 ? (isEditMode ? "Save changes" : "Save Trip") : "Next →"}
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
     </div>

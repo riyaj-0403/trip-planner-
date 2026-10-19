@@ -206,7 +206,7 @@ export default function TripDetailPage() {
             src={trip.coverImageUrl}
             alt=""
             priority
-            className="h-36 w-full rounded-xl sm:h-56 sm:rounded-2xl"
+            className="aspect-video w-full rounded-xl sm:aspect-21/9 sm:max-h-80 sm:rounded-2xl"
           />
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
           <div>
