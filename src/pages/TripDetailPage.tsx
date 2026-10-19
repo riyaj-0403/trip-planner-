@@ -13,6 +13,7 @@ import { Button } from "../components/ui/button";
 import CategoryDonutChart from "../components/CategoryDonutChart";
 import { getCategoryColor, getCategoryLabel } from "../constants/categories";
 import type { Trip, Destination, Activity } from "../types";
+import TripImage from "../components/TripImage";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ function StatCard({
   return (
     <div className="bg-card border border-border rounded-lg px-2.5 py-2.5 sm:px-4 sm:py-3.5 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-2 shadow-sm">
       <span className="text-[11px] sm:text-xs font-medium text-muted-foreground">{label}</span>
-      <span className={`text-sm sm:text-base font-bold break-words ${isNegative ? "text-destructive" : "text-foreground"}`}>{value}</span>
+      <span className={`text-sm sm:text-base font-bold wrap-break-words ${isNegative ? "text-destructive" : "text-foreground"}`}>{value}</span>
     </div>
   );
 }
@@ -46,7 +47,7 @@ function StatCard({
 function ActivityRow({ activity, currency }: { activity: Activity; currency: string }) {
   const color = getCategoryColor(activity.category);
   return (
-    <div className="flex flex-col gap-0.5 sm:gap-1 sm:grid sm:grid-cols-4 sm:items-center sm:gap-2.5 px-2 py-1.5 sm:px-2.5 sm:py-2 bg-muted rounded-lg text-xs">
+    <div className="flex flex-col gap-0.5 sm:gap-1 sm:grid sm:grid-cols-4 sm:items-center px-2 py-1.5 sm:px-2.5 sm:py-2 bg-muted rounded-lg text-xs">
       <span className="text-xs text-muted-foreground whitespace-nowrap">{activity.startTime && activity.endTime ? `${formatTime(activity.startTime)} – ${formatTime(activity.endTime)}` : activity.startTime ? formatTime(activity.startTime) : "—"}</span>
       <span className="font-medium text-foreground min-w-0 truncate">{activity.title}</span>
       <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 w-fit" style={{background: color + "22", color}}>{getCategoryLabel(activity.category)}</span>
@@ -201,10 +202,15 @@ export default function TripDetailPage() {
       {/* ── Header ── */}
       <header className="space-y-2 sm:space-y-3">
         <Link to="/" className="inline-block text-xs font-semibold text-primary hover:underline">← My Trips</Link>
-
+          <TripImage
+            src={trip.coverImageUrl}
+            alt=""
+            priority
+            className="h-36 w-full rounded-xl sm:h-56 sm:rounded-2xl"
+          />
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
           <div>
-            <h1 className="text-xl sm:text-3xl text-foreground font-semibold m-0 mb-1 sm:mb-1.5 break-words">{trip.title}</h1>
+            <h1 className="text-xl sm:text-3xl text-foreground font-semibold m-0 mb-1 sm:mb-1.5 wrap-break-words">{trip.title}</h1>
             <p className="m-0 text-xs sm:text-sm text-muted-foreground flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
               <span>{formatDate(trip.startDate)} – {formatDate(trip.endDate)}</span>
               <span className="hidden sm:inline text-border">·</span>

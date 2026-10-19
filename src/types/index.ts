@@ -11,6 +11,7 @@ export interface Trip {
   totalBudget: number;
   createdAt: string;   // ISO format
   updatedAt: string;   // ISO format
+  coverImageUrl?: string | null;
 }
 
 export interface Destination {
@@ -22,6 +23,7 @@ export interface Destination {
   departureDate: string;
   createdAt: string;   // ISO format
   updatedAt: string;   // ISO format
+  imageUrl?: string | null;
 }
 
 export interface Activity {

@@ -1,5 +1,6 @@
 import type { Trip } from "../../types";
 import { Button } from "../ui/button";
+import TripImage from "../TripImage";
 
 interface TripCardProps {
   trip: Trip;
@@ -23,9 +24,14 @@ function TripCard({
 
   return (
     <div className="bg-card border border-border rounded-xl sm:rounded-2xl p-3 sm:p-6 flex flex-col gap-2.5 sm:gap-5 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+      <TripImage
+      src={trip.coverImageUrl}
+      alt=""
+      className="aspect-3/2 w-full sm:aspect-video"
+    />
       {/* Header */}
       <div>
-        <h2 className="text-base sm:text-2xl text-foreground font-semibold m-0 break-words line-clamp-2 sm:line-clamp-none">
+        <h2 className="text-base sm:text-2xl text-foreground font-semibold m-0 wrap-break-words line-clamp-2 sm:line-clamp-none">
           {trip.title}
         </h2>
       </div>

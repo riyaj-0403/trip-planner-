@@ -43,6 +43,7 @@ interface DestinationDto {
   createdAt: string;
   updatedAt: string;
   activities?: ActivityDto[];
+  imageUrl?: string | null;
 }
 
 interface TripDto {
@@ -57,6 +58,7 @@ interface TripDto {
   createdAt: string;
   updatedAt: string;
   destinations?: DestinationDto[];
+  coverImageUrl?: string | null;
 }
 
 interface PageDto<T> {
@@ -86,6 +88,7 @@ function toTrip(dto: TripDto): Trip {
     totalBudget: Number(dto.totalBudget),
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
+    coverImageUrl: dto.coverImageUrl ?? null,
   } as Trip;
 }
 
@@ -99,6 +102,7 @@ function toDestination(dto: DestinationDto, tripId: string): Destination {
     departureDate: dto.endDate,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
+    imageUrl: dto.imageUrl ?? null,
   } as Destination;
 }
 
